@@ -157,27 +157,34 @@ class AnimeSail : MainAPI() {
         val year = document.select("tbody th:contains(Dirilis)").next().text().trim().toIntOrNull()
 
         // --- Corrected Episode Mapping ---
-        val episodes =
-            document.select("ul.daftar > li") // Assuming this is your episode list selector
-                .mapNotNull { episodeElement -> // Use mapNotNull to safely skip if data is missing
-                    val anchor = episodeElement.selectFirst("a") ?: return@mapNotNull null
-                    val episodeLink = fixUrl(anchor.attr("href"))
-                    val episodeName = anchor.text()
+val episodes =
+    document.select("ul.daftar > li").mapNotNull { episodeElement ->
+        val anchor = episodeElement.selectFirst("a") ?: return@mapNotNull null
+        val episodeLink = fixUrl(anchor.attr("href"))
+        val episodeName = anchor.text()
 
-                    val episodeNumber =
-                        // Renamed from 'episode' to avoid confusion with property name
-                        Regex("Episode\\s?(\\d+)")
-                            .find(episodeName)
-                            ?.groupValues
-                            ?.getOrNull(1) // IMPORTANT: Group 1 for the number
-                            ?.toIntOrNull()
+        val episodeNumber =
+            Regex("Episode\\s?(\\d+)")
+                .find(episodeName)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.toIntOrNull()
 
-                    newEpisode(episodeLink) { // 'episodeLink' is the 'data' argument
-                        this.name = episodeName       // Set the 'name' property
-                        this.episode = episodeNumber  // Set the 'episode' property (the number)
-                    }
-                }
-                .reversed()
+        // --- Ambil thumbnail dari halaman episode ---
+        val epDoc = request(episodeLink).document
+        val epThumb = fixUrl(
+            epDoc.selectFirst("img")?.attr("src") ?: ""
+        )
+
+        newEpisode(episodeLink) {
+            this.name = episodeName
+            this.episode = episodeNumber
+
+            // PREVIEW EPISODE UNIK ---------------------------
+            this.poster = epThumb
+        }
+    }.reversed()
+
         // --- End Corrected Episode Mapping ---
 
         val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
@@ -317,7 +324,7 @@ loadExtractor(url, referer, subtitleCallback) { link ->
                 name = name,
                 url = link.url,
                 referer = link.referer,
-                quality = link.quality,
+                quality = quality,
                 type = link.type,
                 extractorData = link.extractorData,
                 headers = link.headers
