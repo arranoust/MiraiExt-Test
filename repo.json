@@ -1,0 +1,10 @@
+{
+    "iconUrl": "https://raw.githubusercontent.com/arranoust/MiraiExt/main/.github/icon/icon.png",
+    "name": "MiraiExt-Test",
+    "description": "Indonesian Repository for CloudStream.",
+    "manifestVersion": 1,
+    "pluginLists": [
+      "https://raw.githubusercontent.com/arranoust/MiraiExt-Test/refs/heads/builds/plugins.json"
+    ]
+}
+

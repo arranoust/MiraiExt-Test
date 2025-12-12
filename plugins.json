@@ -1,0 +1,63 @@
+[
+    {
+        "iconUrl": "https://aghanim.xyz/wp-content/themes/animesail/assets/images/ico.png",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/arranoust/MiraiExt-Test",
+        "fileSize": 14562,
+        "status": 3,
+        "language": "id",
+        "authors": [
+            "Hexated",
+            "arranoust"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "OVA"
+        ],
+        "version": 23,
+        "internalName": "AnimeSailProvider",
+        "url": "https://raw.githubusercontent.com/arranoust/MiraiExt-Test/builds/AnimeSailProvider.cs3",
+        "name": "AnimeSailProvider"
+    },
+    {
+        "iconUrl": "https://s6.imgcdn.dev/YGBqnS.png",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/arranoust/MiraiExt-Test",
+        "fileSize": 12119,
+        "status": 3,
+        "language": "en",
+        "authors": [
+            "arranoust"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "OVA"
+        ],
+        "version": 1,
+        "internalName": "AniZoneProvider",
+        "url": "https://raw.githubusercontent.com/arranoust/MiraiExt-Test/builds/AniZoneProvider.cs3",
+        "name": "AniZoneProvider"
+    },
+    {
+        "iconUrl": "https://v1.samehadaku.how/wp-content/uploads/2020/04/cropped-download-1-192x192.jpg",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/arranoust/MiraiExt-Test",
+        "fileSize": 19854,
+        "status": 3,
+        "language": "id",
+        "authors": [
+            "arranoust"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "OVA"
+        ],
+        "version": 26,
+        "internalName": "SamehadakuProvider",
+        "url": "https://raw.githubusercontent.com/arranoust/MiraiExt-Test/builds/SamehadakuProvider.cs3",
+        "name": "SamehadakuProvider"
+    }
+]
