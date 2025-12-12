@@ -114,14 +114,12 @@ private fun Element.toSearchResult(pageType: String = "default"): AnimeSearchRes
         this.posterUrl = posterUrl
 
         when (pageType) {
-            "episode_terbaru" -> epNum?.let { addSub(it) } // label episode terakhir
-            "anime_terbaru", "donghua_terbaru" -> addLabel("${type.name} • ${status.name}") // label type + status
+            "episode_terbaru" -> epNum?.let { addSub(it) } // episode terakhir
+            "anime_terbaru", "donghua_terbaru" -> addSub("${type.name} • ${status.name}") // type + status
             "movie_terbaru" -> {} // kosong
         }
     }
 }
-
-
 
     override suspend fun search(query: String): List<SearchResponse> {
         val link = "$mainUrl/?s=$query"
