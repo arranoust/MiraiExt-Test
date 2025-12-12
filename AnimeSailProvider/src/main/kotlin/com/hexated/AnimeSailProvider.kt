@@ -170,20 +170,21 @@ val episodes =
                 ?.getOrNull(1)
                 ?.toIntOrNull()
 
-        // --- Ambil thumbnail dari halaman episode ---
+        // Ambil thumbnail otomatis dari halaman episode
         val epDoc = request(episodeLink).document
         val epThumb = fixUrl(
-            epDoc.selectFirst("img")?.attr("src") ?: ""
+            epDoc.selectFirst("meta[property=og:image]")?.attr("content")
+                ?: epDoc.selectFirst("img")?.attr("src")
+                ?: ""
         )
 
         newEpisode(episodeLink) {
             this.name = episodeName
             this.episode = episodeNumber
-
-            // PREVIEW EPISODE UNIK ---------------------------
-            this.poster = epThumb
+            this.poster = epThumb   // <--- INI WAJIB NYA DI SINI
         }
     }.reversed()
+
 
         // --- End Corrected Episode Mapping ---
 
