@@ -287,22 +287,45 @@ class AnimeSail : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        loadExtractor(url, referer, subtitleCallback) { link ->
-            CoroutineScope(Dispatchers.IO).launch {
-                callback.invoke(
-                    ExtractorLink(
-                        source = name,
-                        name = name,
-                        url = link.url,
-                        referer = link.referer,
-                        quality = quality,
-                        type = link.type,
-                        extractorData = link.extractorData,
-                        headers = link.headers
-                    )
+loadExtractor(url, referer, subtitleCallback) { link ->
+    CoroutineScope(Dispatchers.IO).launch {
+
+        // --- HEVC / H265 detection ---
+        if (link.url.contains("h265", true) ||
+            link.url.contains("hevc", true)) {
+
+            callback.invoke(
+                ExtractorLink(
+                    source = name,
+                    name = "${name} (HEVC)",
+                    url = link.url,
+                    referer = link.referer,
+                    quality = -1,          
+                    type = ExtractorLinkType.M3U8,
+                    extractorData = link.extractorData,
+                    headers = mapOf("Accept" to "*/*")
                 )
-            }
+            )
+            return@launch
         }
+        // --- END HEVC CHECK ---
+
+        // default normal link
+        callback.invoke(
+            ExtractorLink(
+                source = name,
+                name = name,
+                url = link.url,
+                referer = link.referer,
+                quality = link.quality,
+                type = link.type,
+                extractorData = link.extractorData,
+                headers = link.headers
+            )
+        )
+    }
+}
+
 
         fun getIndexQuality(str: String): Int {
             return Regex("(\\d{3,4})[pP]").find(str)?.groupValues?.getOrNull(1)?.toIntOrNull()
