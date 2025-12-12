@@ -255,27 +255,6 @@ class AnimeSail : MainAPI() {
 loadExtractor(url, referer, subtitleCallback) { link ->
     CoroutineScope(Dispatchers.IO).launch {
 
-        // --- HEVC / H265 detection ---
-        if (link.url.contains("h265", true) ||
-            link.url.contains("hevc", true)) {
-
-            callback.invoke(
-                ExtractorLink(
-                    source = name,
-                    name = "${name} (HEVC)",
-                    url = link.url,
-                    referer = link.referer,
-                    quality = -1,          
-                    type = ExtractorLinkType.M3U8,
-                    extractorData = link.extractorData,
-                    headers = mapOf("Accept" to "*/*")
-                )
-            )
-            return@launch
-        }
-        // --- END HEVC CHECK ---
-
-        // default normal link
         callback.invoke(
             ExtractorLink(
                 source = name,
