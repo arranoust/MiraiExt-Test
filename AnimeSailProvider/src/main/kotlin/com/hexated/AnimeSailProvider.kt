@@ -19,7 +19,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 
 /**
- * Optimized AnimeSail provider
+ * Optimized FULL POWER AnimeSail provider
  * - Supports many players (kodir2, arch, race, hexupload, pomf, fichan, blogger, framezilla, uservideo, aghanim redirect)
  * - Preserves headers, referer, extractorData, type, quality, and other metadata
  * - Robust error handling and safe parsing
@@ -281,8 +281,7 @@ class AnimeSailProviderOptimized : MainAPI() {
         loadExtractor(url, referer, subtitleCallback) { link ->
             // Ensure callback runs in IO dispatcher and preserve all link fields
             CoroutineScope(Dispatchers.IO).launch {
-                callback.invoke(
-                    newExtractorLink(
+                CoroutineScope(Dispatchers.IO).launch { callback.invoke($1newExtractorLink(
                         source = link.name,
                         name = link.name,
                         url = link.url,
@@ -290,7 +289,7 @@ class AnimeSailProviderOptimized : MainAPI() {
                     ) {
                         this.referer = link.referer ?: referer ?: mainUrl
                         this.quality = if (link.type == ExtractorLinkType.M3U8) link.quality else (quality ?: link.quality ?: Qualities.Unknown.value)
-                        this.type = link.type
+                        this.type = link.type ?: com.lagradost.cloudstream3.utils.ExtractorLinkType.VIDEO
                         this.headers = link.headers
                         this.extractorData = link.extractorData
                     }
