@@ -107,24 +107,6 @@ class AnimeSail : MainAPI() {
         return document.select("div.listupd article").map { it.toSearchResult() }
     }
 
-        // --- Trace.moe Episode Thumbnail ---
-    private suspend fun getTraceThumbnail(aniId: Int?, episode: Int?): String? {
-        if (aniId == null || episode == null) return null
-
-        return try {
-            val url = "https://api.trace.moe/search?anilistID=$aniId&episode=$episode"
-            val res = app.get(url).parsedSafe<Map<String, Any>>() ?: return null
-
-            val resultList = res["result"] as? List<Map<String, Any>> ?: return null
-            val top = resultList.firstOrNull() ?: return null
-
-            top["image"] as? String
-        } catch (e: Exception) {
-            null
-        }
-    }
-    // --- END Trace.moe ---
-
     override suspend fun load(url: String): LoadResponse {
         val document = request(url).document
 
@@ -139,40 +121,27 @@ class AnimeSail : MainAPI() {
         val year = document.select("tbody th:contains(Dirilis)").next().text().trim().toIntOrNull()
 
         // --- Corrected Episode Mapping ---
-val episodes =
-    document.select("ul.daftar > li").mapNotNull { episodeElement ->
-        val anchor = episodeElement.selectFirst("a") ?: return@mapNotNull null
-        val episodeLink = fixUrl(anchor.attr("href"))
-        val episodeName = anchor.text()
+        val episodes =
+            document.select("ul.daftar > li") // Assuming this is your episode list selector
+                .mapNotNull { episodeElement -> // Use mapNotNull to safely skip if data is missing
+                    val anchor = episodeElement.selectFirst("a") ?: return@mapNotNull null
+                    val episodeLink = fixUrl(anchor.attr("href"))
+                    val episodeName = anchor.text()
 
-        val episodeNumber =
-            Regex("Episode\\s?(\\d+)")
-                .find(episodeName)
-                ?.groupValues
-                ?.getOrNull(1)
-                ?.toIntOrNull()
+                    val episodeNumber =
+                        // Renamed from 'episode' to avoid confusion with property name
+                        Regex("Episode\\s?(\\d+)")
+                            .find(episodeName)
+                            ?.groupValues
+                            ?.getOrNull(1) // IMPORTANT: Group 1 for the number
+                            ?.toIntOrNull()
 
-        newEpisode(episodeLink) {
-            this.name = episodeName
-            this.episode = episodeNumber
-
-            // --- Thumbnail dari Trace.moe ---
-            val traceThumb = getTraceThumbnail(
-                tracker?.aniId?.toIntOrNull(),
-                episodeNumber
-            )
-
-            if (traceThumb != null) {
-                this.posterUrl = traceThumb   // pakai thumbnail per episode
-            }
-            // else → biarkan default (Cloudstream otomatis pakai poster anime)
-            // --- END Trace.moe ---
-        }
-    }.reversed()
-
-
-
-
+                    newEpisode(episodeLink) { // 'episodeLink' is the 'data' argument
+                        this.name = episodeName       // Set the 'name' property
+                        this.episode = episodeNumber  // Set the 'episode' property (the number)
+                    }
+                }
+                .reversed()
 
         // --- End Corrected Episode Mapping ---
 
