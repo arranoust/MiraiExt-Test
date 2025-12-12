@@ -66,12 +66,12 @@ class AnimeSail : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = request(request.data + page).document
         val home = document.select("article").map {
-        when (request.name) {
+    when (request.name) {
         "Episode Terbaru" -> it.toSearchResult("episode_terbaru")
         "Anime Terbaru" -> it.toSearchResult("anime_terbaru")
         "Donghua Terbaru" -> it.toSearchResult("donghua_terbaru")
         "Movie Terbaru" -> it.toSearchResult("movie_terbaru")
-        else -> it.toSearchResult("default")
+        else -> it.toSearchResult()
     }
 }
 
@@ -96,7 +96,7 @@ class AnimeSail : MainAPI() {
         }
     }
 
-private fun Element.toSearchResult(pageType: String): AnimeSearchResponse {
+private fun Element.toSearchResult(pageType: String = "default"): AnimeSearchResponse {
     val href = getProperAnimeLink(fixUrlNull(this.selectFirst("a")?.attr("href")).toString())
     val title = this.select(".tt > h2").text().trim()
     val posterUrl = fixUrl(this.selectFirst("div.limit img")?.attr("src") ?: "")
@@ -114,12 +114,13 @@ private fun Element.toSearchResult(pageType: String): AnimeSearchResponse {
         this.posterUrl = posterUrl
 
         when (pageType) {
-            "episode_terbaru" -> epNum?.let { addSub(it) }
-            "anime_terbaru", "donghua_terbaru" -> this.labelText = "${type.name} • ${status.name}"
-            "movie_terbaru" -> this.labelText = ""
+            "episode_terbaru" -> epNum?.let { addSub(it) } // label episode terakhir
+            "anime_terbaru", "donghua_terbaru" -> addLabel("${type.name} • ${status.name}") // label type + status
+            "movie_terbaru" -> {} // kosong
         }
     }
 }
+
 
 
     override suspend fun search(query: String): List<SearchResponse> {
