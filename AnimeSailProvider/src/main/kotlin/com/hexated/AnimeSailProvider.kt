@@ -235,7 +235,7 @@ class AnimeSail : MainAPI() {
                                                 name = source,
                                                 url = link,
                                                 referer = mainUrl,
-                                                quality = getIndexQuality(element.text()),
+                                                quality = quality,
                                                 type = ExtractorLinkType.VIDEO
                                             )
                                         )
@@ -295,7 +295,7 @@ class AnimeSail : MainAPI() {
                         name = name,
                         url = link.url,
                         referer = link.referer,
-                        quality = link.quality,
+                        quality = quality,
                         type = link.type,
                         extractorData = link.extractorData,
                         headers = link.headers
