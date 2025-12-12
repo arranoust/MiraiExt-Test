@@ -20,7 +20,7 @@ import kotlin.text.Regex
 
 class AnimeSail : MainAPI() {
     override var mainUrl = "https://154.26.137.28"
-    override var name = "AnimeSail🎬"
+    override var name = "AnimeSail"
     override val hasMainPage = true
     override var lang = "id"
     override val hasDownloadSupport = true
@@ -60,42 +60,6 @@ class AnimeSail : MainAPI() {
             "$mainUrl/page/" to "Episode Terbaru",
             "$mainUrl/movie-terbaru/page/" to "Movie Terbaru",
             "$mainUrl/genres/donghua/page/" to "Donghua",
-            "$mainUrl/genres/action/page/" to "Action",
-            "$mainUrl/genres/adult-cast/page/" to "Adult Cast",
-            "$mainUrl/genres/adventure/page/" to "Adventure",
-            "$mainUrl/genres/award-winning/page/" to "Award Winning",
-            "$mainUrl/genres/comedy/page/" to "Comedy",
-            "$mainUrl/genres/demons/page/" to "Demons",
-            "$mainUrl/genres/donghua/page/" to "Donghua",
-            "$mainUrl/genres/drama/page/" to "Drama",
-            "$mainUrl/genres/ecchi/page/" to "Ecchi",
-            "$mainUrl/genres/fantasy/page/" to "Fantasy",
-            "$mainUrl/genres/game/page/" to "Game",
-            "$mainUrl/genres/harem/page/" to "Harem",
-            "$mainUrl/genres/historical/page/" to "Historical",
-            "$mainUrl/genres/horror/page/" to "Horror",
-            "$mainUrl/genres/isekai/page/" to "Isekai",
-            "$mainUrl/genres/kids/page/" to "Kids",
-            "$mainUrl/genres/magic/page/" to "Magic",
-            "$mainUrl/genres/martial-arts/page/" to "Martial Arts",
-            "$mainUrl/genres/mecha/page/" to "Mecha",
-            "$mainUrl/genres/military/page/" to "Military",
-            "$mainUrl/genres/music/page/" to "Music",
-            "$mainUrl/genres/mystery/page/" to "Mystery",
-            "$mainUrl/genres/mythology/page/" to "Mythology",
-            "$mainUrl/genres/parody/page/" to "Parody",
-            "$mainUrl/genres/psychological/page/" to "Psychological",
-            "$mainUrl/genres/reincarnation/page/" to "Reincarnation",
-            "$mainUrl/genres/school/page/" to "School",
-            "$mainUrl/genres/sci-fi/page/" to "Sci-Fi",
-            "$mainUrl/genres/seinen/page/" to "Seinen",
-            "$mainUrl/genres/shoujo/page/" to "Shoujo",
-            "$mainUrl/genres/shounen/page/" to "Shounen",
-            "$mainUrl/genres/slice-of-life/page/" to "Slice of Life",
-            "$mainUrl/genres/space/page/" to "Space",
-            "$mainUrl/genres/sports/page/" to "Sports",
-            "$mainUrl/genres/super-power/page/" to "Super Power",
-            "$mainUrl/genres/supernatural/page/" to "Supernatural",
         )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -143,6 +107,24 @@ class AnimeSail : MainAPI() {
         return document.select("div.listupd article").map { it.toSearchResult() }
     }
 
+        // --- Trace.moe Episode Thumbnail ---
+    private suspend fun getTraceThumbnail(aniId: Int?, episode: Int?): String? {
+        if (aniId == null || episode == null) return null
+
+        return try {
+            val url = "https://api.trace.moe/search?anilistID=$aniId&episode=$episode"
+            val res = app.get(url).parsedSafe<Map<String, Any>>() ?: return null
+
+            val resultList = res["result"] as? List<Map<String, Any>> ?: return null
+            val top = resultList.firstOrNull() ?: return null
+
+            top["image"] as? String
+        } catch (e: Exception) {
+            null
+        }
+    }
+    // --- END Trace.moe ---
+
     override suspend fun load(url: String): LoadResponse {
         val document = request(url).document
 
@@ -174,10 +156,20 @@ val episodes =
             this.name = episodeName
             this.episode = episodeNumber
 
-            // Pasang poster anime untuk semua episode
-            this.posterUrl = finalPoster
+            // --- Thumbnail dari Trace.moe ---
+            val traceThumb = getTraceThumbnail(
+                tracker?.aniId?.toIntOrNull(),
+                episodeNumber
+            )
+
+            if (traceThumb != null) {
+                this.posterUrl = traceThumb   // pakai thumbnail per episode
+            }
+            // else → biarkan default (Cloudstream otomatis pakai poster anime)
+            // --- END Trace.moe ---
         }
     }.reversed()
+
 
 
 
