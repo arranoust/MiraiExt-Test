@@ -4,8 +4,8 @@ import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
 
 @CloudstreamPlugin
-class AnimeSailProviderPlugin : Plugin() {
+class AnimeSailPlugin : Plugin() {
     override fun load(context: android.content.Context) {
-        registerMainAPI(AnimeSailProvider())
+        registerMainAPI(AnimeSail())
     }
 }

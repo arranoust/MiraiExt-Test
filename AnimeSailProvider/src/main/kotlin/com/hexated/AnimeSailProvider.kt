@@ -14,7 +14,7 @@ import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.SubtitleFile
 import kotlin.text.Regex
 
-class AnimeSailProvider : MainAPI() {
+class AnimeSail : MainAPI() {
     // NOTE: if you have a domain, prefer it here instead of raw IP. Keep IP for fallback if needed.
     override var mainUrl = "https://154.26.137.28"
     override var name = "AnimeSail"
