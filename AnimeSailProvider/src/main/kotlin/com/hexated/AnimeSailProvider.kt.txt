@@ -58,8 +58,9 @@ class AnimeSail : MainAPI() {
     override val mainPage =
         mainPageOf(
             "$mainUrl/page/" to "Episode Terbaru",
+            "$mainUrl/rilisan-anime-terbaru" to "Anime Terbaru",
+            "$mainUrl/rilisan-donghua-terbaru" to "Donghua Terbaru",
             "$mainUrl/movie-terbaru/page/" to "Movie Terbaru",
-            "$mainUrl/genres/donghua/page/" to "Donghua",
         )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -142,7 +143,6 @@ class AnimeSail : MainAPI() {
                     }
                 }
                 .reversed()
-
         // --- End Corrected Episode Mapping ---
 
         val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
@@ -252,24 +252,22 @@ class AnimeSail : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-loadExtractor(url, referer, subtitleCallback) { link ->
-    CoroutineScope(Dispatchers.IO).launch {
-
-        callback.invoke(
-            ExtractorLink(
-                source = name,
-                name = name,
-                url = link.url,
-                referer = link.referer,
-                quality = quality,
-                type = link.type,
-                extractorData = link.extractorData,
-                headers = link.headers
-            )
-        )
-    }
-}
-
+        loadExtractor(url, referer, subtitleCallback) { link ->
+            CoroutineScope(Dispatchers.IO).launch {
+                callback.invoke(
+                    ExtractorLink(
+                        source = name,
+                        name = name,
+                        url = link.url,
+                        referer = link.referer,
+                        quality = quality,
+                        type = link.type,
+                        extractorData = link.extractorData,
+                        headers = link.headers
+                    )
+                )
+            }
+        }
 
         fun getIndexQuality(str: String): Int {
             return Regex("(\\d{3,4})[pP]").find(str)?.groupValues?.getOrNull(1)?.toIntOrNull()
