@@ -39,14 +39,12 @@ class AnimeSail : MainAPI() {
             }
         }
 
-        // Regex untuk kualitas video, fleksibel
         fun getIndexQuality(str: String?): Int {
             val match = Regex("(\\d{3,4})\\s*[pP]").find(str ?: "")
             return match?.groupValues?.getOrNull(1)?.toIntOrNull() ?: Qualities.Unknown.value
         }
     }
 
-    // --- Request dengan retry dan timeout ---
     private suspend fun request(url: String, ref: String? = null): NiceResponse {
         repeat(3) { attempt ->
             try {
@@ -58,7 +56,7 @@ class AnimeSail : MainAPI() {
                     ),
                     cookies = mapOf("_as_ipin_ct" to "ID"),
                     referer = ref,
-                    timeout = 15_000 // 15 detik
+                    timeout = 15_000
                 )
             } catch (e: Exception) {
                 if (attempt == 2) throw e
@@ -137,7 +135,7 @@ class AnimeSail : MainAPI() {
         }
     }
 
-    private fun Element.toEpisode(): Episode {
+    private fun Element.toEpisode(): Episode? {
         val anchor = this.selectFirst("a") ?: return null
         val episodeLink = fixUrl(anchor.attr("href"))
         val episodeName = anchor.text()
@@ -156,7 +154,7 @@ class AnimeSail : MainAPI() {
     ): Boolean = coroutineScope {
 
         val document = request(data).document
-        val semaphore = Semaphore(5) // maksimal 5 request bersamaan
+        val semaphore = Semaphore(5)
 
         val jobs = document.select(".mobius > .mirror > option").map { element ->
             async {
@@ -170,7 +168,16 @@ class AnimeSail : MainAPI() {
                             iframe.startsWith("$mainUrl/utils/player/race/") -> {
                                 request(iframe, ref = data).document.select("source").attr("src").let { link ->
                                     val source = if (iframe.contains("/arch/")) "Arch" else "Race"
-                                    callback(ExtractorLink(source, source, link, referer = mainUrl, quality = quality, type = ExtractorLinkType.VIDEO))
+                                    callback(
+                                        ExtractorLink(
+                                            source = source,
+                                            name = source,
+                                            url = link,
+                                            referer = mainUrl,
+                                            quality = quality,
+                                            type = ExtractorLinkType.VIDEO
+                                        )
+                                    )
                                 }
                             }
                             iframe.startsWith("https://aghanim.xyz/tools/redirect/") -> {
@@ -205,33 +212,19 @@ class AnimeSail : MainAPI() {
     ) {
         loadExtractor(url, referer, subtitleCallback) { link ->
             withContext(Dispatchers.IO) {
-                if (link.url.contains("h265", true) || link.url.contains("hevc", true)) {
-                    callback(
-                        ExtractorLink(
-                            source = name,
-                            name = "$name (HEVC)",
-                            url = link.url,
-                            referer = link.referer,
-                            quality = -1,
-                            type = ExtractorLinkType.M3U8,
-                            extractorData = link.extractorData,
-                            headers = mapOf("Accept" to "*/*")
-                        )
+                val isHEVC = link.url.contains("h265", true) || link.url.contains("hevc", true)
+                callback.invoke(
+                    ExtractorLink(
+                        source = name,
+                        name = if (isHEVC) "$name (HEVC)" else name,
+                        url = link.url,
+                        referer = link.referer,
+                        quality = if (isHEVC) -1 else quality,
+                        type = if (isHEVC) ExtractorLinkType.M3U8 else link.type,
+                        extractorData = link.extractorData,
+                        headers = link.headers
                     )
-                } else {
-                    callback(
-                        ExtractorLink(
-                            source = name,
-                            name = name,
-                            url = link.url,
-                            referer = link.referer,
-                            quality = quality,
-                            type = link.type,
-                            extractorData = link.extractorData,
-                            headers = link.headers
-                        )
-                    )
-                }
+                )
             }
         }
     }
