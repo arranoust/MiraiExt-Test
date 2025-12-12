@@ -174,10 +174,11 @@ val episodes =
             this.name = episodeName
             this.episode = episodeNumber
 
-            // --- INI YANG MEMBUAT BANNER OTOMATIS ---
-            this.poster = finalPoster
+            // Pasang poster anime untuk semua episode
+            this.posterUrl = finalPoster
         }
     }.reversed()
+
 
 
 
