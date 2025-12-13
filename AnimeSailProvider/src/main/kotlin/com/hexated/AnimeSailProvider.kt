@@ -43,22 +43,21 @@ class AnimeSail : MainAPI() {
     }
 
 private suspend fun request(url: String, ref: String? = null): NiceResponse {
-    return safeApiCall {
-        app.get(
-            url,
-            headers = mapOf(
-                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "User-Agent" to USER_AGENT
-            ),
-            cookies = mapOf("_as_ipin_ct" to "ID"),
-            referer = ref,
-            timeout = 20_000
-        )
-    } ?: throw ErrorLoadingException("Request failed: $url")
+    return app.get(
+        url,
+        headers = mapOf(
+            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "User-Agent" to
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        cookies = mapOf("_as_ipin_ct" to "ID"),
+        referer = ref,
+        timeout = 20_000
+    )
 }
 
-private const val USER_AGENT =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
     override val mainPage =
         mainPageOf(
