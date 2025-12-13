@@ -95,10 +95,8 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
         val href = getProperAnimeLink(fixUrlNull(this.selectFirst("a")?.attr("href")).toString())
         val title = this.select(".tt > h2").text().trim()
         val posterUrl = fixUrl(this.selectFirst("div.limit img")?.attr("src") ?: "")
-        val rating = this.averageScore
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             this.posterUrl = posterUrl
-            this.score = Score.from100(rating)
         }
     }
 
