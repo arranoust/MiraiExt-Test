@@ -69,9 +69,6 @@ class AnimeSail : MainAPI() {
         return newHomePageResponse(request.name, home)
     }
 
-        return newHomePageResponse(request.name, home)
-    }
-
     private fun getProperAnimeLink(uri: String): String {
         return if (uri.contains("/anime/")) {
             uri
@@ -103,13 +100,6 @@ class AnimeSail : MainAPI() {
             addSub(epNum)
         }
     }
-
-        return newAnimeSearchResponse(title, href, TvType.Anime) {
-            this.posterUrl = posterUrl
-            addSub(epNum)
-        }
-    }
-}
 
     override suspend fun search(query: String): List<SearchResponse> {
         val link = "$mainUrl/?s=$query"
