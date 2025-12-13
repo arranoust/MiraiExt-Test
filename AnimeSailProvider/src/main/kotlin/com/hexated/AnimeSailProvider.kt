@@ -6,12 +6,15 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addMalId
 import com.lagradost.cloudstream3.mvvm.safeApiCall
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.nicehttp.NiceResponse
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
-import kotlin.text.Regex
 
 class AnimeSail : MainAPI() {
     override var mainUrl = "https://154.26.137.28"
@@ -77,9 +80,9 @@ class AnimeSail : MainAPI() {
     }
 
     private fun Element.toSearchResult(): AnimeSearchResponse {
-        val href = getProperAnimeLink(fixUrlNull(this.selectFirst("a")?.attr("href")).toString())
+        val href = getProperAnimeLink(fixUrlNull(this.selectFirst("a")?.attr("href")).orEmpty())
         val title = this.select(".tt > h2").text().trim()
-        val posterUrl = fixUrl(this.selectFirst("div.limit img")?.attr("src") ?: "")
+        val posterUrl = fixUrl(this.selectFirst("div.limit img")?.attr("src").orEmpty())
         val epNum = Regex("Episode\\s?(\\d+)").find(title)?.groupValues?.getOrNull(1)?.toIntOrNull()
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             this.posterUrl = posterUrl
@@ -95,20 +98,19 @@ class AnimeSail : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val document = request(url).document
-
-        val title = document.selectFirst("h1.entry-title")?.text()?.replace("Subtitle Indonesia", "")?.trim()
-        val poster = document.selectFirst("div.entry-content > img")?.attr("src")
+        val title = document.selectFirst("h1.entry-title")?.text()?.replace("Subtitle Indonesia", "")?.trim().orEmpty()
+        val poster = document.selectFirst("div.entry-content > img")?.attr("src").orEmpty()
         val type = getType(document.select("tbody th:contains(Tipe)").next().text().lowercase())
         val year = document.select("tbody th:contains(Dirilis)").next().text().trim().toIntOrNull()
 
-        val episodes = document.select("ul.daftar > li").mapNotNull { episodeElement ->
-            val anchor = episodeElement.selectFirst("a") ?: return@mapNotNull null
-            val episodeLink = fixUrl(anchor.attr("href"))
-            val episodeName = anchor.text()
-            val episodeNumber = Regex("Episode\\s?(\\d+)").find(episodeName)?.groupValues?.getOrNull(1)?.toIntOrNull()
-            newEpisode(episodeLink) {
-                this.name = episodeName
-                this.episode = episodeNumber
+        val episodes = document.select("ul.daftar > li").mapNotNull { li ->
+            val anchor = li.selectFirst("a") ?: return@mapNotNull null
+            val epLink = fixUrl(anchor.attr("href"))
+            val epName = anchor.text()
+            val epNum = Regex("Episode\\s?(\\d+)").find(epName)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            newEpisode(epLink) {
+                this.name = epName
+                this.episode = epNum
             }
         }.reversed()
 
@@ -120,8 +122,8 @@ class AnimeSail : MainAPI() {
             this.year = year
             addEpisodes(DubStatus.Subbed, episodes)
             showStatus = getStatus(document.select("tbody th:contains(Status)").next().text().trim())
-            plot = document.selectFirst("div.entry-content > p")?.text()
-            tags = document.select("tbody th:contains(Genre)").next().select("a").map { it.text() }
+            plot = document.selectFirst("div.entry-content > p")?.text().orEmpty()
+            tags = document.select("tbody th:contains(Genre)").next().select("a").mapNotNull { it.text() }
             addMalId(tracker?.malId)
             addAniListId(tracker?.aniId?.toIntOrNull())
         }
@@ -141,16 +143,20 @@ class AnimeSail : MainAPI() {
                     safeApiCall {
                         val iframe = fixUrl(Jsoup.parse(base64Decode(element.attr("data-em"))).select("iframe").attr("src"))
                         val quality = getIndexQuality(element.text())
-
                         when {
-                            iframe.startsWith("$mainUrl/utils/player/arch/") ||
-                            iframe.startsWith("$mainUrl/utils/player/race/") -> {
-                                val link = request(iframe, ref = data).document.select("source").attr("src")
-                                val source = if (iframe.contains("/arch/")) "Arch" else "Race"
-                                callback.invoke(ExtractorLink(source, source, link, mainUrl, quality, ExtractorLinkType.VIDEO))
+                            iframe.startsWith("$mainUrl/utils/player/") -> {
+                                request(iframe, ref = data).document.select("source").attr("src").let { link ->
+                                    callback.invoke(newExtractorLink(name, name, link, mainUrl, quality, ExtractorLinkType.VIDEO))
+                                }
                             }
                             iframe.contains("krakenfiles.com/embed-video/") -> {
                                 loadKrakenFilesExtractor(iframe, subtitleCallback, callback)
+                            }
+                            iframe.contains("mega.nz/embed") -> {
+                                loadMegaExtractor(iframe, subtitleCallback, callback)
+                            }
+                            iframe.contains("pixel/") -> {
+                                loadPixelExtractor(iframe, subtitleCallback, callback)
                             }
                             else -> {
                                 loadFixedExtractor(iframe, quality, mainUrl, subtitleCallback, callback)
@@ -163,35 +169,6 @@ class AnimeSail : MainAPI() {
         }
 
         return true
-    }
-
-    private fun getIndexQuality(str: String?): Int {
-        return Regex("(\\d{3,4})[pP]").find(str ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull() ?: Qualities.Unknown.value
-    }
-
-    private suspend fun loadFixedExtractor(
-        url: String,
-        quality: Int,
-        referer: String? = null,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        loadExtractor(url, referer, subtitleCallback) { link ->
-            CoroutineScope(Dispatchers.IO).launch {
-                callback.invoke(
-                    ExtractorLink(
-                        source = name,
-                        name = name,
-                        url = link.url,
-                        referer = link.referer,
-                        quality = quality,
-                        type = link.type,
-                        extractorData = link.extractorData,
-                        headers = link.headers
-                    )
-                )
-            }
-        }
     }
 
     private suspend fun loadKrakenFilesExtractor(
@@ -207,9 +184,49 @@ class AnimeSail : MainAPI() {
                 directLink.contains("720") -> 720
                 else -> Qualities.Unknown.value
             }
-            callback.invoke(ExtractorLink("KrakenFiles", "KrakenFiles", directLink, url, quality, ExtractorLinkType.VIDEO))
+            callback.invoke(newExtractorLink("KrakenFiles", "KrakenFiles", directLink, url, quality, ExtractorLinkType.VIDEO))
         } catch (e: Exception) {
             println("KrakenFiles extractor error: ${e.message}")
+        }
+    }
+
+    private suspend fun loadMegaExtractor(
+        url: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        // Mega extractor bisa pakai loadExtractor atau implementasi Mega yang tersedia
+        loadExtractor(url, url, subtitleCallback) { link ->
+            callback.invoke(newExtractorLink("Mega", "Mega", link.url, url, Qualities.Unknown.value, link.type))
+        }
+    }
+
+    private suspend fun loadPixelExtractor(
+        url: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        loadExtractor(url, url, subtitleCallback) { link ->
+            callback.invoke(newExtractorLink("Pixel", "Pixel", link.url, url, Qualities.Unknown.value, link.type))
+        }
+    }
+
+    private fun getIndexQuality(str: String?): Int {
+        return Regex("(\\d{3,4})[pP]").find(str.orEmpty())?.groupValues?.getOrNull(1)?.toIntOrNull()
+            ?: Qualities.Unknown.value
+    }
+
+    private suspend fun loadFixedExtractor(
+        url: String,
+        quality: Int,
+        referer: String? = null,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        loadExtractor(url, referer, subtitleCallback) { link ->
+            CoroutineScope(Dispatchers.IO).launch {
+                callback.invoke(newExtractorLink(name, name, link.url, link.referer, quality, link.type))
+            }
         }
     }
 }
