@@ -228,6 +228,10 @@ class AnimeSail : MainAPI() {
                                 }
                             }
 
+                            iframe.contains("krakenfiles.com/embed-video/") -> {
+                                 loadKrakenFilesExtractor(iframe, subtitleCallback, callback)
+                    }
+
                             else -> {
                                 loadFixedExtractor(iframe, quality, mainUrl, subtitleCallback, callback)
                             }
@@ -240,6 +244,44 @@ class AnimeSail : MainAPI() {
 
         return true
     }
+    
+    private suspend fun loadKrakenFilesExtractor(
+    url: String,
+    subtitleCallback: (SubtitleFile) -> Unit,
+    callback: (ExtractorLink) -> Unit
+) {
+    try {
+        val document = app.get(
+            url,
+            headers = mapOf(
+                "User-Agent" to "Mozilla/5.0",
+                "Referer" to url
+            )
+        ).document
+
+        val directLink = document.selectFirst("a#downloadButton")?.attr("href") ?: return
+
+        val quality = when {
+            directLink.contains("1080") -> 1080
+            directLink.contains("720") -> 720
+            else -> Qualities.Unknown.value
+        }
+
+        callback.invoke(
+            ExtractorLink(
+                source = "KrakenFiles",
+                name = "KrakenFiles",
+                url = directLink,
+                referer = url,
+                quality = quality,
+                type = ExtractorLinkType.VIDEO
+            )
+        )
+    } catch (e: Exception) {
+        log("KrakenFiles extractor error: ${e.message}")
+    }
+}
+
 
     private fun getIndexQuality(str: String?): Int {
         return Regex("(\\d{3,4})[pP]").find(str ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull()
