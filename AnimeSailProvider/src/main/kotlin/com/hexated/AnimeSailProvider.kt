@@ -90,7 +90,7 @@ class AnimeSail : MainAPI() {
         }
     }
 
-private fun Element.toSearchResult(): AnimeSearchResponse {
+    private fun Element.toSearchResult(): AnimeSearchResponse {
         val href = getProperAnimeLink(fixUrlNull(this.selectFirst("a")?.attr("href")).toString())
         val title = this.select(".tt > h2").text().trim()
         val posterUrl = fixUrl(this.selectFirst("div.limit img")?.attr("src") ?: "")
@@ -104,13 +104,9 @@ private fun Element.toSearchResult(): AnimeSearchResponse {
         }
     }
 
-    return newAnimeSearchResponse(title, href, TvType.Anime) {
-        this.posterUrl = posterUrl
-
-        when (pageType) {
-            "episode_terbaru" -> epNum?.let { addSub(it) }
-            "rating" -> rating?.let { addSub(it) }
-            else -> {}
+        return newAnimeSearchResponse(title, href, TvType.Anime) {
+            this.posterUrl = posterUrl
+            addSub(epNum)
         }
     }
 }
