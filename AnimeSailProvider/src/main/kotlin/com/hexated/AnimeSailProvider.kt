@@ -20,7 +20,7 @@ import kotlin.text.Regex
 
 class AnimeSail : MainAPI() {
     override var mainUrl = "https://154.26.137.28"
-    override var name = "AnimeSail"
+    override var name = "AnimeSail Beta"
     override val hasMainPage = true
     override var lang = "id"
     override val hasDownloadSupport = true
