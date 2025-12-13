@@ -144,6 +144,7 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
                     newEpisode(episodeLink) { // 'episodeLink' is the 'data' argument
                         this.name = episodeName       // Set the 'name' property
                         this.episode = episodeNumber  // Set the 'episode' property (the number)
+                        this.posterUrl = posterUrl
                     }
                 }
                 .reversed()
@@ -274,7 +275,7 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
                         name = label,
                         url = link.url,
                         referer = link.referer,
-                        quality = quality,
+                        quality = link.quality,
                         type = link.type,
                         extractorData = link.extractorData,
                         headers = link.headers
