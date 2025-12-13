@@ -49,7 +49,7 @@ class AnimeSail : MainAPI() {
                 mapOf(
                     "Accept" to
                             "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36"
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36"
                 ),
             cookies = mapOf("_as_ipin_ct" to "ID"),
             referer = ref
@@ -79,11 +79,9 @@ class AnimeSail : MainAPI() {
                 when {
                     (title.contains("-episode")) && !(title.contains("-movie")) ->
                         title.substringBefore("-episode")
-
                     (title.contains("-movie")) -> title.substringBefore("-movie")
                     else -> title
                 }
-
             "$mainUrl/anime/$title"
         }
     }
@@ -122,29 +120,24 @@ class AnimeSail : MainAPI() {
         val type = getType(document.select("tbody th:contains(Tipe)").next().text().lowercase())
         val year = document.select("tbody th:contains(Dirilis)").next().text().trim().toIntOrNull()
 
-        // --- Corrected Episode Mapping ---
         val episodes =
-            document.select("ul.daftar > li") // Assuming this is your episode list selector
-                .mapNotNull { episodeElement -> // Use mapNotNull to safely skip if data is missing
+            document.select("ul.daftar > li")
+                .mapNotNull { episodeElement ->
                     val anchor = episodeElement.selectFirst("a") ?: return@mapNotNull null
                     val episodeLink = fixUrl(anchor.attr("href"))
                     val episodeName = anchor.text()
-
                     val episodeNumber =
-                        // Renamed from 'episode' to avoid confusion with property name
                         Regex("Episode\\s?(\\d+)")
                             .find(episodeName)
                             ?.groupValues
-                            ?.getOrNull(1) // IMPORTANT: Group 1 for the number
+                            ?.getOrNull(1)
                             ?.toIntOrNull()
-
-                    newEpisode(episodeLink) { // 'episodeLink' is the 'data' argument
-                        this.name = episodeName       // Set the 'name' property
-                        this.episode = episodeNumber  // Set the 'episode' property (the number)
+                    newEpisode(episodeLink) {
+                        this.name = episodeName
+                        this.episode = episodeNumber
                     }
                 }
                 .reversed()
-        // --- End Corrected Episode Mapping ---
 
         val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
 
@@ -172,7 +165,7 @@ class AnimeSail : MainAPI() {
 
         val document = request(data).document
 
-        // Replace blocking apmap with coroutine-friendly concurrent processing
+        // --- Mirror biasa via .mobius > .mirror > option ---
         coroutineScope {
             val jobs = document.select(".mobius > .mirror > option").map { element ->
                 async {
@@ -206,35 +199,7 @@ class AnimeSail : MainAPI() {
                                             )
                                         )
                                     }
-                            iframe.startsWith("https://aghanim.xyz/tools/redirect/") -> {
-                                val link =
-                                    "https://rasa-cintaku-semakin-berantai.xyz/v/${
-                                        iframe.substringAfter("id=").substringBefore("&token")
-                                    }"
-                                loadFixedExtractor(link, quality, mainUrl, subtitleCallback, callback)
-                            }
-
-                            iframe.startsWith("$mainUrl/utils/player/framezilla/") ||
-                                    iframe.startsWith("https://uservideo.xyz") -> {
-                                request(iframe, ref = data).document.select("iframe").attr("src").let { link
-                                    ->
-                                    loadFixedExtractor(
-                                        fixUrl(link),
-                                        quality,
-                                        mainUrl,
-                                        subtitleCallback,
-                                        callback
-                                    )
-                                }
-                            }
-
-                            iframe.contains("krakenfiles.com/embed-video/") -> {
-                                 loadKrakenFilesExtractor(iframe, subtitleCallback, callback)
-                    }
-
-                            else -> {
-                                loadFixedExtractor(iframe, quality, mainUrl, subtitleCallback, callback)
-                            }
+                            else -> loadFixedExtractor(iframe, quality, mainUrl, subtitleCallback, callback)
                         }
                     }
                 }
@@ -242,46 +207,55 @@ class AnimeSail : MainAPI() {
             jobs.awaitAll()
         }
 
-        return true
-    }
-    
-    private suspend fun loadKrakenFilesExtractor(
-    url: String,
-    subtitleCallback: (SubtitleFile) -> Unit,
-    callback: (ExtractorLink) -> Unit
-) {
-    try {
-        val document = app.get(
-            url,
-            headers = mapOf(
-                "User-Agent" to "Mozilla/5.0",
-                "Referer" to url
-            )
-        ).document
-
-        val directLink = document.selectFirst("a#downloadButton")?.attr("href") ?: return
-
-        val quality = when {
-            directLink.contains("1080") -> 1080
-            directLink.contains("720") -> 720
-            else -> Qualities.Unknown.value
+        // --- KrakenFiles langsung dari iframe ---
+        document.select("iframe").forEach { iframe ->
+            val src = iframe.attr("src")
+            if (src.contains("krakenfiles.com/embed-video/")) {
+                safeApiCall {
+                    loadKrakenFilesExtractor(src, subtitleCallback, callback)
+                }
+            }
         }
 
-        callback.invoke(
-            ExtractorLink(
-                source = "KrakenFiles",
-                name = "KrakenFiles",
-                url = directLink,
-                referer = url,
-                quality = quality,
-                type = ExtractorLinkType.VIDEO
-            )
-        )
-    } catch (e: Exception) {
-        println("KrakenFiles extractor error: ${e.message}")
+        return true
     }
-}
 
+    private suspend fun loadKrakenFilesExtractor(
+        url: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            val document = app.get(
+                url,
+                headers = mapOf(
+                    "User-Agent" to "Mozilla/5.0",
+                    "Referer" to url
+                )
+            ).document
+
+            val directLink = document.selectFirst("a#downloadButton")?.attr("href") ?: return
+
+            val quality = when {
+                directLink.contains("1080") -> 1080
+                directLink.contains("720") -> 720
+                else -> Qualities.Unknown.value
+            }
+
+            callback.invoke(
+                ExtractorLink(
+                    source = "KrakenFiles",
+                    name = "KrakenFiles",
+                    url = directLink,
+                    referer = url,
+                    quality = quality,
+                    type = ExtractorLinkType.VIDEO
+                )
+            )
+        } catch (e: Exception) {
+            println("KrakenFiles extractor error: ${e.message}")
+        }
+    }
 
     private fun getIndexQuality(str: String?): Int {
         return Regex("(\\d{3,4})[pP]").find(str ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull()
@@ -310,11 +284,6 @@ class AnimeSail : MainAPI() {
                     )
                 )
             }
-        }
-
-        fun getIndexQuality(str: String): Int {
-            return Regex("(\\d{3,4})[pP]").find(str)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                ?: Qualities.Unknown.value
         }
     }
 }
