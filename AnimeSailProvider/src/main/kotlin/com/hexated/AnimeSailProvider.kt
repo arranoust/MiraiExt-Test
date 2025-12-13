@@ -122,11 +122,7 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
                 .replace("Subtitle Indonesia", "")
                 .trim()
 
-        val posterUrl =
-            document.selectFirst("div.entry-content > img")
-            ?.attr("src")
-            ?.let { fixUrl(it) }
-
+        val poster = document.selectFirst("div.entry-content > img")?.attr("src")
         val type = getType(document.select("tbody th:contains(Tipe)").next().text().lowercase())
         val year = document.select("tbody th:contains(Dirilis)").next().text().trim().toIntOrNull()
 
