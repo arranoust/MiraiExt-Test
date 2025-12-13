@@ -257,7 +257,6 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
         callback: (ExtractorLink) -> Unit
     ) {
         loadExtractor(url, referer, subtitleCallback) { link ->
-            CoroutineScope(Dispatchers.IO).launch {
                 callback.invoke(
                     ExtractorLink(
                         source = name,
@@ -269,7 +268,6 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
                         extractorData = link.extractorData,
                         headers = link.headers
                     )
-                )
             }
         }
 
