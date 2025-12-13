@@ -65,13 +65,13 @@ class AnimeSail : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = request(request.data + page).document
-         val home = document.select("article").map {
-            when (request.name) {
-                "Episode Terbaru" -> it.toSearchResult("episode_terbaru")
-                "Anime Terbaru" -> it.toSearchResult("rating")
-                "Donghua Terbaru" -> it.toSearchResult("rating")
-                "Movie Terbaru" -> it.toSearchResult("rating")
-                else -> it.toSearchResult()
+val home = document.select("article").map {
+    when (request.name) {
+        "Episode Terbaru" -> it.toSearchResultWithRating("episode_terbaru")
+        "Anime Terbaru" -> it.toSearchResultWithRating("rating")
+        "Donghua Terbaru" -> it.toSearchResultWithRating("rating")
+        "Movie Terbaru" -> it.toSearchResultWithRating("rating")
+        else -> it.toSearchResultWithRating()
     }
 }
 
@@ -96,29 +96,37 @@ class AnimeSail : MainAPI() {
         }
     }
 
-    private fun Element.toSearchResult(pageType: String = "default"): AnimeSearchResponse {
-        val href = getProperAnimeLink(fixUrlNull(this.selectFirst("a")?.attr("href")).toString())
-        val title = this.select(".tt > h2").text().trim()
-        val posterUrl = fixUrl(this.selectFirst("div.limit img")?.attr("src") ?: "")
+private suspend fun Element.toSearchResultWithRating(pageType: String = "default"): AnimeSearchResponse {
+    val href = getProperAnimeLink(fixUrlNull(this.selectFirst("a")?.attr("href")).toString())
+    val title = this.select(".tt > h2").text().trim()
+    val posterUrl = fixUrl(this.selectFirst("div.limit img")?.attr("src") ?: "")
 
-        // episode terakhir
-        val epNum = this.selectFirst(".tt > h2")?.text()?.let {
-            Regex("Episode\\s?(\\d+)").find(it)?.groupValues?.getOrNull(1)?.toIntOrNull()
-        }
+    val epNum = this.selectFirst(".tt > h2")?.text()?.let {
+        Regex("Episode\\s?(\\d+)").find(it)?.groupValues?.getOrNull(1)?.toIntOrNull()
+    }
 
-        // rating 
-        val rating = this.selectFirst(".tt > .rating")?.text()?.toIntOrNull()
+    var rating: Int? = null
 
-        return newAnimeSearchResponse(title, href, TvType.Anime) {
-            this.posterUrl = posterUrl
-
-            when (pageType) {
-                "episode_terbaru" -> epNum?.let { addSub(it) } 
-                "rating" -> rating?.let { addSub(it) } 
-                else -> {}
-            }
+    if (pageType == "rating") {
+        try {
+            val doc = request(href).document
+            // Misal rating ada di <span class="rating">...</span>
+            rating = doc.selectFirst("span.rating")?.text()?.toIntOrNull()
+        } catch (_: Exception) {
+            rating = null
         }
     }
+
+    return newAnimeSearchResponse(title, href, TvType.Anime) {
+        this.posterUrl = posterUrl
+
+        when (pageType) {
+            "episode_terbaru" -> epNum?.let { addSub(it) }
+            "rating" -> rating?.let { addSub(it) }
+            else -> {}
+        }
+    }
+}
 
     override suspend fun search(query: String): List<SearchResponse> {
         val link = "$mainUrl/?s=$query"
