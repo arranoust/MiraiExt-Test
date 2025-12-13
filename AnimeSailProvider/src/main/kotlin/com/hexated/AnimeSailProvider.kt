@@ -278,7 +278,7 @@ class AnimeSail : MainAPI() {
             )
         )
     } catch (e: Exception) {
-        printIn("KrakenFiles extractor error: ${e.message}")
+        println("KrakenFiles extractor error: ${e.message}")
     }
 }
 
