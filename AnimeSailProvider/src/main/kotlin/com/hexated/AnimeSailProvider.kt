@@ -101,7 +101,7 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
             }
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             this.posterUrl = posterUrl
-            addSub(epNum)
+            this.score = Score.from100(rating)
         }
     }
 
@@ -145,7 +145,6 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
                     newEpisode(episodeLink) { // 'episodeLink' is the 'data' argument
                         this.name = episodeName       // Set the 'name' property
                         this.episode = episodeNumber  // Set the 'episode' property (the number)
-                        this.posterUrl = posterUrl    // Set the 'poster' property
                     }
                 }
                 .reversed()
