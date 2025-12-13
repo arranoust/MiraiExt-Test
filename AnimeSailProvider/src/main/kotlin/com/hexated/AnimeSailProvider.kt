@@ -42,6 +42,20 @@ class AnimeSail : MainAPI() {
         }
     }
 
+    override fun settings() = listOf(
+    IntSetting(
+        key = "animesail_quality",
+        title = "Prioritas Kualitas Video",
+        defaultValue = 720,
+        values = listOf(360, 480, 720, 1080),
+        description = "Video di bawah kualitas ini akan diabaikan"
+    )
+)
+
+private val preferredQuality =
+    PreferenceManager.getInt("animesail_quality", 720)
+
+
 private suspend fun request(url: String, ref: String? = null): NiceResponse {
     return app.get(
         url,
@@ -187,6 +201,9 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
                                     .attr("src")
                             )
                         val quality = getIndexQuality(element.text())
+                        if (quality != Qualities.Unknown.value && quality < preferredQuality) {
+                                return@safeApiCall
+                            }
                         when {
                             iframe.startsWith("$mainUrl/utils/player/arch/") ||
                                     iframe.startsWith("$mainUrl/utils/player/race/") ->
@@ -245,9 +262,13 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
     }
 
     private fun getIndexQuality(str: String?): Int {
-        return Regex("(\\d{3,4})[pP]").find(str ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull()
-            ?: Qualities.Unknown.value
+        return Regex("(240|360|480|720|1080)")
+        .find(str ?: "")
+        ?.value
+        ?.toInt()
+        ?: Qualities.Unknown.value
     }
+
 
     private suspend fun loadFixedExtractor(
         url: String,
