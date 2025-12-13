@@ -121,7 +121,12 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
                 .toString()
                 .replace("Subtitle Indonesia", "")
                 .trim()
-        val poster = document.selectFirst("div.entry-content > img")?.attr("src")
+
+        val posterUrl =
+            document.selectFirst("div.entry-content > img")
+            ?.attr("src")
+            ?.let { fixUrl(it) }
+
         val type = getType(document.select("tbody th:contains(Tipe)").next().text().lowercase())
         val year = document.select("tbody th:contains(Dirilis)").next().text().trim().toIntOrNull()
 
@@ -144,7 +149,7 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
                     newEpisode(episodeLink) { // 'episodeLink' is the 'data' argument
                         this.name = episodeName       // Set the 'name' property
                         this.episode = episodeNumber  // Set the 'episode' property (the number)
-                        this.posterUrl = posterUrl
+                        this.posterUrl = posterUrl    // Set the 'poster' property
                     }
                 }
                 .reversed()
