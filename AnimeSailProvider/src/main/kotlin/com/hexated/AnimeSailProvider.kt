@@ -198,10 +198,15 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
                                                 iframe.contains("/race/") -> "Race"
                                                 else -> this@AnimeSail.name
                                             }
+
+                                        val label =
+                                        if (quality == Qualities.Unknown.value) source
+                                        else "$source • ${quality}p"
+
                                         callback.invoke(
                                             ExtractorLink(
                                                 source = source,
-                                                name = source,
+                                                name = label,
                                                 url = link,
                                                 referer = mainUrl,
                                                 quality = quality,
@@ -258,10 +263,15 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
     ) {
         loadExtractor(url, referer, subtitleCallback) { link ->
             CoroutineScope(Dispatchers.IO).launch {
+
+            val label =
+                if (quality == Qualities.Unknown.value) name
+                 else "$name • ${quality}p"
+
                 callback.invoke(
                     ExtractorLink(
                         source = name,
-                        name = name,
+                        name = label,
                         url = link.url,
                         referer = link.referer,
                         quality = quality,
