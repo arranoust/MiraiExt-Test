@@ -111,18 +111,17 @@ class AnimeSail : MainAPI() {
                 val anchor = episodeElement.selectFirst("a") ?: return@mapNotNull null
                 val episodeLink = fixUrl(anchor.attr("href"))
                 val episodeName = anchor.text()
+                    .replace("Subtitle Indonesia", "", ignoreCase = true)
+                    .trim()
                 val episodeNumber = Regex("Episode\\s?(\\d+)")
                     .find(episodeName)
                     ?.groupValues?.getOrNull(1)
                     ?.toIntOrNull()
 
-                val episodePoster = safeRequest(episodeLink)?.document
-                    ?.selectFirst("meta[property=og:image]")?.attr("content")
-
                 newEpisode(episodeLink) {
                     this.name = episodeName
                     this.episode = episodeNumber
-                    this.posterUrl = episodePoster ?: poster
+                    this.posterUrl = tracker?.image ?: poster
                 }
             }
             .reversed()
