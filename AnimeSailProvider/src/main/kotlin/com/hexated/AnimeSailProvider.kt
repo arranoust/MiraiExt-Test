@@ -69,9 +69,7 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = request(request.data + page).document
-        document.select("tbody tr").firstOrNull {
-            it.text().contains("Genre", ignoreCase = true)
-        }?.select("a")?.map { it.text() } ?: emptyList()
+        document.select("tbody th:contains(Genre)").next()
         return newHomePageResponse(request.name, home)
     }
 
@@ -158,7 +156,11 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
                 getStatus(document.select("tbody th:contains(Status)").next().text().trim())
             plot = document.selectFirst("div.entry-content > p")?.text()
             this.tags =
-                document.select("tbody th:contains(Genre)").next().select("a").map { it.text() }
+                document.select("tbody tr")
+                    .firstOrNull { it.text().contains("Genre", ignoreCase = true) }
+                    ?.select("a")
+                    ?.map { it.text() }
+                    ?: emptyList()
             addMalId(tracker?.malId)
             addAniListId(tracker?.aniId?.toIntOrNull())
         }
