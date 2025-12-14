@@ -99,7 +99,7 @@ class AnimeSail : MainAPI() {
         val title = document.selectFirst("h1.entry-title")
             ?.text()
             .toString()
-            .replace("", "")
+            .replace(Regex("\\s*Subtitle Indonesia\\s*", RegexOption.IGNORE_CASE), "")
             .trim()
 
         val poster = document.selectFirst("div.entry-content > img")?.attr("src")
