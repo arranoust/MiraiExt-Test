@@ -52,7 +52,9 @@ class SamehadakuProvider : MainAPI() {
 
     private fun Element.toLatestAnimeResult(): AnimeSearchResponse? {
         val a = this.selectFirst("div.thumb a") ?: return null
-        val title = this.selectFirst("h2.entry-title a")?.text()?.trim() ?: a.attr("title") ?: return null
+        val title = this.selectFirst("h2.entry-title a")?.text()?.trim()?.removeBloat()
+            ?: a.attr("title")?.removeBloat()
+            ?: return null
         val href = fixUrlNull(a.attr("href")) ?: return null
         val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("src"))
         val epNum = this.selectFirst("div.dtla author")?.text()?.toIntOrNull()
@@ -72,7 +74,9 @@ class SamehadakuProvider : MainAPI() {
 
     private fun Element.toSearchResult(): AnimeSearchResponse? {
         val a = this.selectFirst("div.thumb a") ?: return null
-        val title = this.selectFirst("h2.entry-title a")?.text()?.trim() ?: a.attr("title") ?: return null
+        val title = this.selectFirst("h2.entry-title a")?.text()?.trim()?.removeBloat()
+            ?: a.attr("title")?.removeBloat()
+            ?: return null
         val href = fixUrlNull(a.attr("href")) ?: return null
         val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("src"))
 
@@ -82,39 +86,53 @@ class SamehadakuProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val fixUrl = if (url.contains("/anime/")) url
-        else app.get(url).document.selectFirst("div.nvs.nvsc a")?.attr("href")
+    val fixUrl = if (url.contains("/anime/")) url
+    else app.get(url) {
+        addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36")
+        addHeader("Referer", mainUrl)
+        addHeader("Accept-Language", "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7")
+    }.document.selectFirst("div.nvs.nvsc a")?.attr("href")
 
-        val document = app.get(fixUrl ?: return null).document
-        val title = document.selectFirst("h1.entry-title")?.text()?.removeBloat() ?: return null
-        val poster = document.selectFirst("div.thumb > img")?.attr("src")
-        val tags = document.select("div.genre-info > a").map { it.text() }
-        val year = document.selectFirst("div.spe > span:contains(Rilis)")?.ownText()?.let {
-            Regex("\\d,\\s(\\d*)").find(it)?.groupValues?.getOrNull(1)?.toIntOrNull()
-        }
-        val status = getStatus(document.selectFirst("div.spe > span:contains(Status)")?.ownText() ?: return null)
-        val type = getType(document.selectFirst("div.spe > span:contains(Type)")?.ownText()?.trim()?.lowercase() ?: "tv")
-        val description = document.select("div.desc p").text().trim()
-        val trailer = document.selectFirst("div.trailer-anime iframe")?.attr("src")
+    val document = app.get(fixUrl ?: return null) {
+        addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36")
+        addHeader("Referer", mainUrl)
+        addHeader("Accept-Language", "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7")
+    }.document
 
-        val episodes = document.select("div.lstepsiode.listeps ul li").mapNotNull {
-            val header = it.selectFirst("span.lchx > a") ?: return@mapNotNull null
-            val episode = Regex("Episode\\s?(\\d+)").find(header.text())?.groupValues?.getOrNull(1)?.toIntOrNull()
-            val link = fixUrl(header.attr("href"))
-            newEpisode(link) { this.episode = episode }
-        }.reversed()
-
-        return newAnimeLoadResponse(title, url, type) {
-            engName = title
-            this.posterUrl = poster
-            this.year = year
-            addEpisodes(DubStatus.Subbed, episodes)
-            showStatus = status
-            plot = description
-            addTrailer(trailer)
-            this.tags = tags
-        }
+    val title = document.selectFirst("h1.entry-title")?.text()?.removeBloat() ?: return null
+    val poster = document.selectFirst("div.thumb > img")?.attr("src")
+    val tags = document.select("div.genre-info > a").map { it.text() }
+    val year = document.selectFirst("div.spe > span:contains(Rilis)")?.ownText()?.let {
+        Regex("\\d,\\s(\\d*)").find(it)?.groupValues?.getOrNull(1)?.toIntOrNull()
     }
+    val status = getStatus(document.selectFirst("div.spe > span:contains(Status)")?.ownText() ?: return null)
+    val type = getType(document.selectFirst("div.spe > span:contains(Type)")?.ownText()?.trim()?.lowercase() ?: "tv")
+    val description = document.select("div.desc p").text().trim()
+    val trailer = document.selectFirst("div.trailer-anime iframe")?.attr("src")
+
+    val episodes = document.select("div.lstepsiode.listeps ul li").mapNotNull {
+        val header = it.selectFirst("span.lchx > a") ?: return@mapNotNull null
+        val episode = Regex("Episode\\s?(\\d+)").find(header.text())?.groupValues?.getOrNull(1)?.toIntOrNull()
+        val link = fixUrl(header.attr("href"))
+        val epPoster = it.selectFirst("img")?.attr("src")
+
+        newEpisode(link) {
+            this.episode = episode
+            this.posterUrl = epPoster
+        }
+    }.reversed()
+
+    return newAnimeLoadResponse(title, url, type) {
+        engName = title
+        this.posterUrl = poster
+        this.year = year
+        addEpisodes(DubStatus.Subbed, episodes)
+        showStatus = status
+        plot = description
+        addTrailer(trailer)
+        this.tags = tags
+    }
+}
 
     override suspend fun loadLinks(
         data: String,
@@ -167,5 +185,5 @@ class SamehadakuProvider : MainAPI() {
     }
 
     private fun String.removeBloat(): String =
-        this.replace(Regex("(Nonton)|(Anime)|(Subtitle\\sIndonesia)"), "").trim()
+        this.replace(Regex("(Nonton)|(Anime)|(Subtitle\\sIndonesia)|(Sub\\sIndo)"), "").trim()
 }
