@@ -69,7 +69,9 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = request(request.data + page).document
-        val home = document.select("article").map { it.toSearchResult() }
+        document.select("tbody tr").firstOrNull {
+            it.text().contains("Genre", ignoreCase = true)
+        }?.select("a")?.map { it.text() } ?: emptyList()
         return newHomePageResponse(request.name, home)
     }
 
