@@ -172,42 +172,44 @@ class AnimeSail : MainAPI() {
     val document = request(data).document
 
     coroutineScope {
-    document.select(".mobius > .mirror > option").map { option ->
-        async {
-            val iframe = safeApiCall {
-                fixUrl(
-                    Jsoup.parse(base64Decode(option.attr("data-em")))
-                        .select("iframe")
-                        .attr("src")
-                )
-            }.getOrNull() ?: return@async
+        document.select(".mobius > .mirror > option").map { option ->
+            async {
+                try {
+                    val iframe = fixUrl(
+                        Jsoup.parse(base64Decode(option.attr("data-em")))
+                            .select("iframe")
+                            .attr("src")
+                    )
 
-            val quality = getIndexQuality(option.text())
+                    if (iframe.isBlank()) return@async
 
-            loadExtractor(iframe, data, subtitleCallback) { link ->
-                callback(
-                    newExtractorLink(
-                        source = name,
-                        name = name,
-                        url = link.url
-                    ) {
-                        this.referer = link.referer
-                        this.quality = quality
-                        this.type = link.type
+                    val quality = getIndexQuality(option.text())
 
-                        if (link.headers.isNotEmpty()) {
-                            this.headers = link.headers
-                        }
-                        if (link.extractorData != null) {
-                            this.extractorData = link.extractorData
-                        }
+                    loadExtractor(iframe, data, subtitleCallback) { link ->
+                        callback(
+                            newExtractorLink(
+                                source = name,
+                                name = name,
+                                url = link.url
+                            ) {
+                                this.referer = link.referer
+                                this.quality = quality
+                                this.type = link.type
+
+                                if (link.headers.isNotEmpty()) {
+                                    this.headers = link.headers
+                                }
+                                if (link.extractorData != null) {
+                                    this.extractorData = link.extractorData
+                                }
+                            }
+                        )
                     }
-                )
+                } catch (_: Throwable) {
+                }
             }
-        }
-    }.awaitAll()
-}
-
+        }.awaitAll()
+    }
 
     return true
 }
