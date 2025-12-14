@@ -185,21 +185,27 @@ class AnimeSail : MainAPI() {
                         val quality = getIndexQuality(option.text())
 
                         loadExtractor(iframe, data, subtitleCallback) { link ->
-                            callback(
-                                newExtractorLink(
-                                    source = name,
-                                    name = name,
-                                    url = link.url
-                                ) {
-                                    referer = link.referer
-                                    quality = quality
-                                    type = link.type
-                                    extractorData = link.extractorData
-                                    headers = link.headers
-                                }
-                            )
+    callback(
+        newExtractorLink(
+            source = name,
+            name = name,
+            url = link.url
+        ) {
+            this.referer = link.referer
+            this.quality = quality   // pakai this.
+            this.type = link.type
 
-                        }
+            if (link.headers.isNotEmpty()) {
+                this.headers = link.headers
+            }
+
+            if (link.extractorData != null) {
+                this.extractorData = link.extractorData
+            }
+        }
+    )
+}
+
                     }
                 }
             }.awaitAll()
