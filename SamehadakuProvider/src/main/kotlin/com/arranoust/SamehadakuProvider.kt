@@ -26,5 +26,12 @@ class SamehadakuProvider : MainAPI() {
         }
     }
 
-    return newHomePageResponse("Update Terbaru", items)
+    return newHomePageResponse(
+        list = HomePageList(
+            name = "Update Terbaru",
+            list = items,
+            isHorizontalImages = true
+        ),
+        hasNext = false
+    )
 }
