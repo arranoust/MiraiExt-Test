@@ -45,12 +45,11 @@ class AnimeSail : MainAPI() {
                 "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
                         "AppleWebKit/537.36 (KHTML, like Gecko) " +
-                        "Chrome/120.0.0.0 Safari/537.36"
+                        "Chrome/120.0.0.0 Safari/537.36",
                 "Referer" to (ref ?: mainUrl)
             ),
             cookies = mapOf("_as_ipin_ct" to "ID"),
             timeout = 20_000
-            followRedirects = true
         )
     }
 
@@ -250,7 +249,7 @@ private suspend fun loadFixedExtractor(
     callback: (ExtractorLink) -> Unit,
     headers: Map<String, String>? = null
 ) {
-    loadExtractor(url, referer, subtitleCallback, headers) { link ->
+    loadExtractor(url, referer, subtitleCallback) { link ->
         callback(
             ExtractorLink(
                 source = name,
@@ -260,9 +259,8 @@ private suspend fun loadFixedExtractor(
                 quality = quality,
                 type = link.type,
                 extractorData = link.extractorData,
-                headers = link.headers ?: headers
+                headers = headers ?: link.headers 
             )
         )
     }
 }
-
