@@ -255,7 +255,6 @@ private fun getIndexQuality(str: String?): Int {
     ) {
         loadExtractor(url, referer, subtitleCallback) { link ->
             CoroutineScope(Dispatchers.IO).launch {
-            val label = name 
                 callback.invoke(
                     ExtractorLink(
                         source = name,
@@ -267,7 +266,6 @@ private fun getIndexQuality(str: String?): Int {
                         extractorData = link.extractorData,
                         headers = link.headers
                     )
-                )
             }
         }
 
