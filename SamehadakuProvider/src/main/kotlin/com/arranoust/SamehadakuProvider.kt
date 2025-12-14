@@ -42,4 +42,20 @@ class SamehadakuProvider : MainAPI() {
             hasNext = items.isNotEmpty()
         )
     }
+    override suspend fun search(query: String): List<SearchResponse> {
+    // URL search di Samehadaku
+        val searchUrl = "$mainUrl/?s=${query.replace(" ", "+")}"
+        val document = app.get(searchUrl).document
+
+    return document.select("div.latest-anime li[itemtype='http://schema.org/CreativeWork']").mapNotNull { el ->
+        val a = el.selectFirst("div.thumb a") ?: return@mapNotNull null
+        val title = el.selectFirst("h2.entry-title a")?.text()?.trim() ?: a.attr("title") ?: return@mapNotNull null
+        val href = fixUrlNull(a.attr("href")) ?: return@mapNotNull null
+        val poster = fixUrlNull(el.selectFirst("img")?.attr("src")) ?: return@mapNotNull null
+
+        newAnimeSearchResponse(title, href, TvType.Anime) {
+            this.posterUrl = poster
+        }
+    }
+}
 }
