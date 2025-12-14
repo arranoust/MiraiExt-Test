@@ -162,20 +162,20 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
         }
     }
 
-override suspend fun loadLinks(
-    data: String,
-    isCasting: Boolean,
-    subtitleCallback: (SubtitleFile) -> Unit,
-    callback: (ExtractorLink) -> Unit
-): Boolean {
-    val document = request(data).document
-    val links = mutableListOf<ExtractorLink>()
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
 
-    coroutineScope {
-        val jobs = document.select(".mobius > .mirror > option").map { element ->
-            async {
-                safeApiCall {
-                    try {
+        val document = request(data).document
+
+        // Replace blocking apmap with coroutine-friendly concurrent processing
+        coroutineScope {
+            val jobs = document.select(".mobius > .mirror > option").map { element ->
+                async {
+                    safeApiCall {
                         val iframe =
                             fixUrl(
                                 Jsoup.parse(base64Decode(element.attr("data-em")))
@@ -183,68 +183,67 @@ override suspend fun loadLinks(
                                     .attr("src")
                             )
                         val quality = getIndexQuality(element.text())
-
-                        val extractorCallback: (String) -> Unit = { linkUrl ->
-                            val label = if (quality == 0) name else "$name • ${quality}p"
-                            links.add(
-                                ExtractorLink(
-                                    source = name,
-                                    name = label,
-                                    url = linkUrl,
-                                    referer = mainUrl,
-                                    quality = quality,
-                                    type = ExtractorLinkType.VIDEO
-                                )
-                            )
-                        }
-
                         when {
                             iframe.startsWith("$mainUrl/utils/player/arch/") ||
                                     iframe.startsWith("$mainUrl/utils/player/race/") ->
                                 request(iframe, ref = data).document.select("source").attr("src")
-                                    .let { extractorCallback(it) }
-
+                                    .let { link ->
+                                        val source =
+                                            when {
+                                                iframe.contains("/arch/") -> "Arch"
+                                                iframe.contains("/race/") -> "Race"
+                                                else -> this@AnimeSail.name
+                                            }
+                                        callback.invoke(
+                                            ExtractorLink(
+                                                source = source,
+                                                name = source,
+                                                url = link,
+                                                referer = mainUrl,
+                                                quality = quality,
+                                                type = ExtractorLinkType.VIDEO
+                                            )
+                                        )
+                                    }
                             iframe.startsWith("https://aghanim.xyz/tools/redirect/") -> {
                                 val link =
                                     "https://rasa-cintaku-semakin-berantai.xyz/v/${
                                         iframe.substringAfter("id=").substringBefore("&token")
                                     }"
-                                loadFixedExtractor(link, quality, mainUrl, subtitleCallback) { extractorCallback(it.url) }
+                                loadFixedExtractor(link, quality, mainUrl, subtitleCallback, callback)
                             }
 
                             iframe.startsWith("$mainUrl/utils/player/framezilla/") ||
-                                    iframe.startsWith("https://uservideo.xyz") ->
-                                request(iframe, ref = data).document.select("iframe").attr("src")
-                                    .let { loadFixedExtractor(fixUrl(it), quality, mainUrl, subtitleCallback) { extractorCallback(it.url) } }
+                                    iframe.startsWith("https://uservideo.xyz") -> {
+                                request(iframe, ref = data).document.select("iframe").attr("src").let { link
+                                    ->
+                                    loadFixedExtractor(
+                                        fixUrl(link),
+                                        quality,
+                                        mainUrl,
+                                        subtitleCallback,
+                                        callback
+                                    )
+                                }
+                            }
 
-                            else -> loadFixedExtractor(iframe, quality, mainUrl, subtitleCallback) { extractorCallback(it.url) }
+                            else -> {
+                                loadFixedExtractor(iframe, quality, mainUrl, subtitleCallback, callback)
+                            }
                         }
-
-                    } catch (_: Exception) {
-                        // Kalau ada error, skip aja, jangan crash
                     }
                 }
             }
+            jobs.awaitAll()
         }
-        jobs.awaitAll()
+
+        return true
     }
 
-    // Sorting dari resolusi tertinggi ke rendah
-    links.sortByDescending { it.quality }
-
-    // Kirim ke callback setelah di-sort
-    links.forEach { callback(it) }
-
-    return true
-}
-
-private fun getIndexQuality(str: String?): Int {
-    if (str == null) return 0
-    val match = Regex("(\\d{3,4})[pP]").findAll(str)
-        .mapNotNull { it.groupValues.getOrNull(1)?.toIntOrNull() }
-        .maxOrNull() // ambil resolusi tertinggi jika ada lebih dari satu angka
-    return match ?: 0
-}
+    private fun getIndexQuality(str: String?): Int {
+        return Regex("(\\d{3,4})[pP]").find(str ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull()
+            ?: Qualities.Unknown.value
+    }
 
     private suspend fun loadFixedExtractor(
         url: String,
@@ -261,11 +260,12 @@ private fun getIndexQuality(str: String?): Int {
                         name = name,
                         url = link.url,
                         referer = link.referer,
-                        quality = link.quality,
+                        quality = quality,
                         type = link.type,
                         extractorData = link.extractorData,
                         headers = link.headers
-                )   )
+                    )
+                )
             }
         }
 
