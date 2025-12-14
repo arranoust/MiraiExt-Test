@@ -115,9 +115,14 @@ class AnimeSail : MainAPI() {
                     .find(episodeName)
                     ?.groupValues?.getOrNull(1)
                     ?.toIntOrNull()
+
+                val episodePoster = safeRequest(episodeLink)?.document
+                    ?.selectFirst("meta[property=og:image]")?.attr("content")
+
                 newEpisode(episodeLink) {
                     this.name = episodeName
                     this.episode = episodeNumber
+                    this.posterUrl = episodePoster ?: poster
                 }
             }
             .reversed()
