@@ -171,42 +171,32 @@ class AnimeSail : MainAPI() {
 
     val document = request(data).document
 
-    coroutineScope {
-        document.select(".mobius > .mirror > option").map { option ->
-            async {
-                safeApiCall {
-                    val iframe =
-                        fixUrl(
-                            Jsoup.parse(base64Decode(option.attr("data-em")))
-                                .select("iframe")
-                                .attr("src")
-                        )
+    for (option in document.select(".mobius > .mirror > option")) {
+        try {
+            val iframe = fixUrl(
+                Jsoup.parse(base64Decode(option.attr("data-em")))
+                    .select("iframe")
+                    .attr("src")
+            )
 
-                    val quality = getIndexQuality(option.text())
+            val quality = getIndexQuality(option.text())
 
-                    loadExtractor(iframe, data, subtitleCallback) { link ->
-                        callback(
-                            newExtractorLink(
-                                source = name,
-                                name = name,
-                                url = link.url,
-                                type = link.type
-                            ) {
-                                this.referer = link.referer
-                                this.quality = quality
-
-                                if (link.headers.isNotEmpty()) {
-                                    this.headers = link.headers
-                                }
-                                if (link.extractorData != null) {
-                                    this.extractorData = link.extractorData
-                                }
-                            }
-                        )
+            loadExtractor(iframe, data, subtitleCallback) { link ->
+                callback(
+                    newExtractorLink(
+                        source = name,
+                        name = name,
+                        url = link.url,
+                        type = link.type
+                    ) {
+                        this.referer = link.referer
+                        this.quality = quality
+                        this.headers = link.headers
+                        this.extractorData = link.extractorData
                     }
-                }
+                )
             }
-        }.awaitAll()
+        } catch (_: Throwable) {}
     }
 
     return true
