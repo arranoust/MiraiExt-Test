@@ -87,17 +87,17 @@ class SamehadakuProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse? {
     val fixUrl = if (url.contains("/anime/")) url
-    else app.get(url) {
-        addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36")
-        addHeader("Referer", mainUrl)
-        addHeader("Accept-Language", "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7")
-    }.document.selectFirst("div.nvs.nvsc a")?.attr("href")
+    else app.get("$mainUrl/$url", headers = mapOf(
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
+        "Referer" to mainUrl,
+        "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
+    )).document.selectFirst("div.nvs.nvsc a")?.attr("href")
 
-    val document = app.get(fixUrl ?: return null) {
-        addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36")
-        addHeader("Referer", mainUrl)
-        addHeader("Accept-Language", "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7")
-    }.document
+    val document = app.get(fixUrl ?: return null, headers = mapOf(
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
+        "Referer" to mainUrl,
+        "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
+    )).document
 
     val title = document.selectFirst("h1.entry-title")?.text()?.removeBloat() ?: return null
     val poster = document.selectFirst("div.thumb > img")?.attr("src")
