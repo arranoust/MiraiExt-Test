@@ -80,7 +80,10 @@ class AnimeSail : MainAPI() {
 
     private fun Element.toSearchResult(): AnimeSearchResponse {
         val href = getProperAnimeLink(fixUrlNull(this.selectFirst("a")?.attr("href")).toString())
-        val title = this.select(".tt > h2").text().trim()
+        val title = this.select(".tt > h2")
+            .text()
+            .replace("Subtitle Indonesia", "", ignoreCase = true)
+            .trim()
         val posterUrl = fixUrl(this.selectFirst("div.limit img")?.attr("src") ?: "")
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             this.posterUrl = posterUrl
@@ -122,7 +125,7 @@ class AnimeSail : MainAPI() {
                 newEpisode(episodeLink) {
                     this.name = episodeName
                     this.episode = episodeNumber
-                    this.posterUrl = tracker?.image ?: poster
+                    this.posterUrl = tracker?.cover
                 }
             }
             .reversed()
