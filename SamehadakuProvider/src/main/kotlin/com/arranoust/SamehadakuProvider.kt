@@ -15,29 +15,30 @@ class SamehadakuProvider : MainAPI() {
 
     // Homepage
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // URL sesuai page
-        val pageUrl = if (page > 1) "$mainUrl/page/$page/" else mainUrl
-        val document = app.get(pageUrl).document
+    val pageUrl = if (page > 1) "$mainUrl/page/$page/" else mainUrl
+    val document = app.get(pageUrl).document
 
-        // Ambil container utama homepage (hanya anime terbaru)
-        val items = document.select("div.latest-anime a[itemprop=url]").mapNotNull { element ->
-            val img = element.selectFirst("img")?.attr("src") ?: return@mapNotNull null
-            val title = element.attr("title").takeIf { it.isNotEmpty() } ?: return@mapNotNull null
-            val link = element.attr("href").takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+    val items = document.select("a[itemprop=url]").mapNotNull { element ->
+        val title = element.attr("title").takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+        val link = element.attr("href").takeIf { it.startsWith(mainUrl) } ?: return@mapNotNull null
+        val img = element.selectFirst("img")?.attr("src") ?: return@mapNotNull null
 
-            // Buat anime card CloudStream
-            newAnimeSearchResponse(title, link, TvType.Anime) {
-                this.posterUrl = img
-            }
+        // hindari banner atau teks umum
+        if (title.lowercase().contains("nonton anime")) return@mapNotNull null
+
+        newAnimeSearchResponse(title, link, TvType.Anime) {
+            this.posterUrl = img
         }
-
-        return newHomePageResponse(
-            list = HomePageList(
-                name = "Update Terbaru",
-                list = items,
-                isHorizontalImages = true
-            ),
-            hasNext = items.isNotEmpty() 
-        )
     }
+
+    return newHomePageResponse(
+        list = HomePageList(
+            name = "Update Terbaru",
+            list = items,
+            isHorizontalImages = true
+        ),
+        hasNext = items.isNotEmpty()
+    )
+}
+
 }
