@@ -105,7 +105,8 @@ class AnimeSail : MainAPI() {
         val poster = document.selectFirst("div.entry-content > img")?.attr("src")
         val type = getType(document.select("tbody th:contains(Tipe)").next().text().lowercase())
         val year = document.select("tbody th:contains(Dirilis)").next().text().trim().toIntOrNull()
-
+        
+        val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
         val episodes = document.select("ul.daftar > li")
             .mapNotNull { episodeElement ->
                 val anchor = episodeElement.selectFirst("a") ?: return@mapNotNull null
@@ -125,8 +126,6 @@ class AnimeSail : MainAPI() {
                 }
             }
             .reversed()
-
-        val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
 
         return newAnimeLoadResponse(title, url, type) {
             posterUrl = tracker?.image ?: poster
