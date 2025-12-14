@@ -162,88 +162,87 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
         }
     }
 
-    override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
+override suspend fun loadLinks(
+    data: String,
+    isCasting: Boolean,
+    subtitleCallback: (SubtitleFile) -> Unit,
+    callback: (ExtractorLink) -> Unit
+): Boolean {
+    val document = request(data).document
+    val links = mutableListOf<ExtractorLink>()
 
-        val document = request(data).document
-
-        // Replace blocking apmap with coroutine-friendly concurrent processing
-        coroutineScope {
-            val jobs = document.select(".mobius > .mirror > option").map { element ->
-                async {
+    coroutineScope {
+        val jobs = document.select(".mobius > .mirror > option").map { element ->
+            async {
+                try {
                     safeApiCall {
-                        val iframe =
-                            fixUrl(
-                                Jsoup.parse(base64Decode(element.attr("data-em")))
-                                    .select("iframe")
-                                    .attr("src")
-                            )
+                        val iframe = fixUrl(
+                            Jsoup.parse(base64Decode(element.attr("data-em")))
+                                .select("iframe").attr("src")
+                        )
                         val quality = getIndexQuality(element.text())
+
                         when {
                             iframe.startsWith("$mainUrl/utils/player/arch/") ||
-                                    iframe.startsWith("$mainUrl/utils/player/race/") ->
-                                request(iframe, ref = data).document.select("source").attr("src")
-                                    .let { link ->
-                                        val source =
-                                            when {
-                                                iframe.contains("/arch/") -> "Arch"
-                                                iframe.contains("/race/") -> "Race"
-                                                else -> this@AnimeSail.name
-                                            }
+                                    iframe.startsWith("$mainUrl/utils/player/race/") -> {
+                                val link = request(iframe, ref = data).document.select("source").attr("src")
+                                val source = if (iframe.contains("/arch/")) "Arch" else "Race"
+                                val label = if (quality == Qualities.Unknown.value) source else "$source • ${quality}p"
 
-                                        val label =
-                                        if (quality == Qualities.Unknown.value) source
-                                        else "$source • ${quality}p"
-
-                                        callback.invoke(
-                                            ExtractorLink(
-                                                source = source,
-                                                name = label,
-                                                url = link,
-                                                referer = mainUrl,
-                                                quality = quality,
-                                                type = ExtractorLinkType.VIDEO
-                                            )
+                                synchronized(links) {
+                                    links.add(
+                                        ExtractorLink(
+                                            source = source,
+                                            name = label,
+                                            url = link,
+                                            referer = mainUrl,
+                                            quality = quality,
+                                            type = ExtractorLinkType.VIDEO
                                         )
-                                    }
-                            iframe.startsWith("https://aghanim.xyz/tools/redirect/") -> {
-                                val link =
-                                    "https://rasa-cintaku-semakin-berantai.xyz/v/${
-                                        iframe.substringAfter("id=").substringBefore("&token")
-                                    }"
-                                loadFixedExtractor(link, quality, mainUrl, subtitleCallback, callback)
-                            }
-
-                            iframe.startsWith("$mainUrl/utils/player/framezilla/") ||
-                                    iframe.startsWith("https://uservideo.xyz") -> {
-                                request(iframe, ref = data).document.select("iframe").attr("src").let { link
-                                    ->
-                                    loadFixedExtractor(
-                                        fixUrl(link),
-                                        quality,
-                                        mainUrl,
-                                        subtitleCallback,
-                                        callback
                                     )
                                 }
                             }
 
+                            iframe.startsWith("https://aghanim.xyz/tools/redirect/") -> {
+                                val link = "https://rasa-cintaku-semakin-berantai.xyz/v/${
+                                    iframe.substringAfter("id=").substringBefore("&token")
+                                }"
+                                loadFixedExtractor(link, quality, mainUrl, subtitleCallback) { linkObj ->
+                                    synchronized(links) { links.add(linkObj) }
+                                }
+                            }
+
+                            iframe.startsWith("$mainUrl/utils/player/framezilla/") ||
+                                    iframe.startsWith("https://uservideo.xyz") -> {
+                                val link = request(iframe, ref = data).document.select("iframe").attr("src")
+                                loadFixedExtractor(fixUrl(link), quality, mainUrl, subtitleCallback) { linkObj ->
+                                    synchronized(links) { links.add(linkObj) }
+                                }
+                            }
+
                             else -> {
-                                loadFixedExtractor(iframe, quality, mainUrl, subtitleCallback, callback)
+                                loadFixedExtractor(iframe, quality, mainUrl, subtitleCallback) { linkObj ->
+                                    synchronized(links) { links.add(linkObj) }
+                                }
                             }
                         }
                     }
+                } catch (_: Exception) {
+                    // ignore, supaya tidak crash kalau situs berubah layout
                 }
             }
-            jobs.awaitAll()
         }
-
-        return true
+        jobs.awaitAll()
     }
+
+    // Urutkan dari resolusi tertinggi ke rendah
+    links.sortByDescending { it.quality }
+
+    // Kirim ke callback
+    links.forEach { callback.invoke(it) }
+
+    return true
+}
 
     private fun getIndexQuality(str: String?): Int {
         return Regex("(\\d{3,4})[pP]").find(str ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull()
