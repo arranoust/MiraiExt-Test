@@ -258,14 +258,14 @@ private fun getIndexQuality(str: String?): Int {
                 callback.invoke(
                     ExtractorLink(
                         source = name,
-                        name = label,
+                        name = name,
                         url = link.url,
                         referer = link.referer,
                         quality = link.quality,
                         type = link.type,
                         extractorData = link.extractorData,
                         headers = link.headers
-                    )
+                )   )
             }
         }
 
