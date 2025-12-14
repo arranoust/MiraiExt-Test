@@ -46,10 +46,11 @@ class AnimeSail : MainAPI() {
                 "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
                         "AppleWebKit/537.36 (KHTML, like Gecko) " +
                         "Chrome/120.0.0.0 Safari/537.36"
+                "Referer" to (ref ?: mainUrl)
             ),
             cookies = mapOf("_as_ipin_ct" to "ID"),
-            referer = ref,
             timeout = 20_000
+            followRedirects = true
         )
     }
 
@@ -137,74 +138,103 @@ class AnimeSail : MainAPI() {
         }
     }
 
-    override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
-        val document = request(data).document
+override suspend fun loadLinks(
+    data: String,
+    isCasting: Boolean,
+    subtitleCallback: (SubtitleFile) -> Unit,
+    callback: (ExtractorLink) -> Unit
+): Boolean {
 
-        coroutineScope {
-            val jobs = document.select(".mobius > .mirror > option").map { element ->
-                async {
-                    safeApiCall {
-                        val iframe = fixUrl(
-                            Jsoup.parse(base64Decode(element.attr("data-em")))
-                                .select("iframe")
-                                .attr("src")
-                        )
-                        val quality = getIndexQuality(element.text())
+    suspend fun safeRequest(url: String, ref: String? = null, retries: Int = 2): NiceResponse? {
+        repeat(retries) {
+            try {
+                return request(url, ref)
+            } catch (_: Exception) { /* retry */ }
+        }
+        return null
+    }
 
-                        when {
-                            iframe.startsWith("$mainUrl/utils/player/arch/") ||
-                                    iframe.startsWith("$mainUrl/utils/player/race/") -> {
-                                request(iframe, ref = data).document.select("source").attr("src")
-                                    .let { link ->
-                                        val source = when {
-                                            iframe.contains("/arch/") -> "Arch"
-                                            iframe.contains("/race/") -> "Race"
-                                            else -> this@AnimeSail.name
-                                        }
-                                        callback(
-                                            ExtractorLink(
-                                                source = source,
-                                                name = source,
-                                                url = link,
-                                                referer = mainUrl,
-                                                quality = quality,
-                                                type = ExtractorLinkType.VIDEO
-                                            )
+    val document = safeRequest(data)?.document ?: return false
+
+    coroutineScope {
+        val jobs = document.select(".mobius > .mirror > option").map { element ->
+            async {
+                safeApiCall {
+                    val iframe = fixUrl(
+                        Jsoup.parse(base64Decode(element.attr("data-em")))
+                            .select("iframe")
+                            .attr("src")
+                    )
+                    val quality = getIndexQuality(element.text())
+
+                    when {
+                        iframe.startsWith("$mainUrl/utils/player/arch/") ||
+                                iframe.startsWith("$mainUrl/utils/player/race/") -> {
+                            val videoLink = safeRequest(iframe, data)?.document?.select("source")?.attr("src")
+                            videoLink?.let { link ->
+                                val source = when {
+                                    iframe.contains("/arch/") -> "Arch"
+                                    iframe.contains("/race/") -> "Race"
+                                    else -> this@AnimeSail.name
+                                }
+                                callback(
+                                    ExtractorLink(
+                                        source = source,
+                                        name = source,
+                                        url = link,
+                                        referer = mainUrl,
+                                        quality = quality,
+                                        type = ExtractorLinkType.VIDEO,
+                                        headers = mapOf(
+                                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                                            "Referer" to data
                                         )
-                                    }
+                                    )
+                                )
                             }
+                        }
 
-                            iframe.startsWith("https://aghanim.xyz/tools/redirect/") -> {
-                                val link = "https://rasa-cintaku-semakin-berantai.xyz/v/${
-                                    iframe.substringAfter("id=").substringBefore("&token")
-                                }"
-                                loadFixedExtractor(link, quality, mainUrl, subtitleCallback, callback)
-                            }
+                        iframe.startsWith("https://aghanim.xyz/tools/redirect/") -> {
+                            val link = "https://rasa-cintaku-semakin-berantai.xyz/v/${
+                                iframe.substringAfter("id=").substringBefore("&token")
+                            }"
+                            loadFixedExtractor(link, quality, mainUrl, subtitleCallback, callback,
+                                headers = mapOf(
+                                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                                    "Referer" to data
+                                )
+                            )
+                        }
 
-                            iframe.startsWith("$mainUrl/utils/player/framezilla/") ||
-                                    iframe.startsWith("https://uservideo.xyz") -> {
-                                request(iframe, ref = data).document.select("iframe").attr("src")
-                                    .let { link ->
-                                        loadFixedExtractor(fixUrl(link), quality, mainUrl, subtitleCallback, callback)
-                                    }
+                        iframe.startsWith("$mainUrl/utils/player/framezilla/") ||
+                                iframe.startsWith("https://uservideo.xyz") -> {
+                            val nestedIframe = safeRequest(iframe, data)?.document?.select("iframe")?.attr("src")
+                            nestedIframe?.let {
+                                loadFixedExtractor(fixUrl(it), quality, mainUrl, subtitleCallback, callback,
+                                    headers = mapOf(
+                                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                                        "Referer" to data
+                                    )
+                                )
                             }
+                        }
 
-                            else -> {
-                                loadFixedExtractor(iframe, quality, mainUrl, subtitleCallback, callback)
-                            }
+                        else -> {
+                            loadFixedExtractor(iframe, quality, mainUrl, subtitleCallback, callback,
+                                headers = mapOf(
+                                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                                    "Referer" to data
+                                )
+                            )
                         }
                     }
                 }
             }
-            jobs.awaitAll()
         }
-        return true
+        jobs.awaitAll()
     }
+    return true
+}
 
     private fun getIndexQuality(str: String?): Int {
         return Regex("(\\d{3,4})[pP]").find(str ?: "")
@@ -212,28 +242,27 @@ class AnimeSail : MainAPI() {
             ?: Qualities.Unknown.value
     }
 
-    private suspend fun loadFixedExtractor(
-        url: String,
-        quality: Int,
-        referer: String? = null,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        loadExtractor(url, referer, subtitleCallback) { link ->
-            CoroutineScope(Dispatchers.IO).launch {
-                callback(
-                    ExtractorLink(
-                        source = name,
-                        name = name,
-                        url = link.url,
-                        referer = link.referer,
-                        quality = quality,
-                        type = link.type,
-                        extractorData = link.extractorData,
-                        headers = link.headers
-                    )
-                )
-            }
-        }
+private suspend fun loadFixedExtractor(
+    url: String,
+    quality: Int,
+    referer: String? = null,
+    subtitleCallback: (SubtitleFile) -> Unit,
+    callback: (ExtractorLink) -> Unit,
+    headers: Map<String, String>? = null
+) {
+    loadExtractor(url, referer, subtitleCallback, headers) { link ->
+        callback(
+            ExtractorLink(
+                source = name,
+                name = name,
+                url = link.url,
+                referer = link.referer,
+                quality = quality,
+                type = link.type,
+                extractorData = link.extractorData,
+                headers = link.headers ?: headers
+            )
+        )
     }
 }
+
