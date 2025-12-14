@@ -169,94 +169,106 @@ class AnimeSail : MainAPI() {
 
         coroutineScope {
             document.select(".mobius > .mirror > option").map { element ->
-                async {
-                    safeApiCall {
-                        val iframe = fixUrl(
-                            Jsoup.parse(base64Decode(element.attr("data-em")))
-                                .selectFirst("iframe")
-                                ?.attr("src")
-                                ?: return@safeApiCall
-                        )
+                override suspend fun loadLinks(
+    data: String,
+    isCasting: Boolean,
+    subtitleCallback: (SubtitleFile) -> Unit,
+    callback: (ExtractorLink) -> Unit
+): Boolean {
 
-                        val quality = getIndexQuality(element.text())
+    val document = request(data).document
 
-                        when {
-                            iframe.startsWith("$mainUrl/utils/player/arch/") ||
-                            iframe.startsWith("$mainUrl/utils/player/race/") -> {
+    coroutineScope {
+        document.select(".mobius > .mirror > option").map { element ->
+            async {
+                safeApiCall {
+                    val iframe = fixUrl(
+                        Jsoup.parse(base64Decode(element.attr("data-em")))
+                            .selectFirst("iframe")
+                            ?.attr("src")
+                            ?: return@safeApiCall
+                    )
 
-                                val videoLink =
-                                    request(iframe, ref = data).document
-                                        .selectFirst("source")
-                                        ?.attr("src")
-                                        ?: return@safeApiCall
+                    val quality = getIndexQuality(element.text())
 
-                                val source = when {
-                                    iframe.contains("/arch/") -> "Arch"
-                                    iframe.contains("/race/") -> "Race"
-                                    else -> name
+                    when {
+                        iframe.startsWith("$mainUrl/utils/player/arch/") ||
+                        iframe.startsWith("$mainUrl/utils/player/race/") -> {
+
+                            val videoLink =
+                                request(iframe, ref = data).document
+                                    .selectFirst("source")
+                                    ?.attr("src")
+                                    ?: return@safeApiCall
+
+                            val source = when {
+                                iframe.contains("/arch/") -> "Arch"
+                                iframe.contains("/race/") -> "Race"
+                                else -> name
+                            }
+
+                            callback(
+                                newExtractorLink(
+                                    source = source,
+                                    name = source,
+                                    url = videoLink
+                                ) {
+                                    this.referer = mainUrl
+                                    this.quality = quality
                                 }
+                            )
+                        }
 
-                                callback(
-                                    newExtractorLink(
-                                        source = source,
-                                        name = source,
-                                        url = videoLink
-                                    ) {
-                                        this.referer = mainUrl
-                                        this.quality = quality
-                                    }
-                                )
-                            }
+                        iframe.startsWith("https://aghanim.xyz/tools/redirect/") -> {
+                            val link =
+                                "https://rasa-cintaku-semakin-berantai.xyz/v/${
+                                    iframe.substringAfter("id=").substringBefore("&token")
+                                }"
 
-                            iframe.startsWith("https://aghanim.xyz/tools/redirect/") -> {
-                                val link =
-                                    "https://rasa-cintaku-semakin-berantai.xyz/v/${
-                                        iframe.substringAfter("id=").substringBefore("&token")
-                                    }"
+                            loadFixedExtractor(
+                                link,
+                                quality,
+                                mainUrl,
+                                subtitleCallback,
+                                callback
+                            )
+                        }
 
-                                loadFixedExtractor(
-                                    link,
-                                    quality,
-                                    mainUrl,
-                                    subtitleCallback,
-                                    callback
-                                )
-                            }
+                        iframe.startsWith("$mainUrl/utils/player/framezilla/") ||
+                        iframe.startsWith("https://uservideo.xyz") -> {
 
-                            iframe.startsWith("$mainUrl/utils/player/framezilla/") ||
-                            iframe.startsWith("https://uservideo.xyz") -> {
+                            val realIframe =
+                                request(iframe, ref = data).document
+                                    .selectFirst("iframe")
+                                    ?.attr("src")
+                                    ?: return@safeApiCall
 
-                                val realIframe =
-                                    request(iframe, ref = data).document
-                                        .selectFirst("iframe")
-                                        ?.attr("src")
-                                        ?: return@safeApiCall
+                            loadFixedExtractor(
+                                fixUrl(realIframe),
+                                quality,
+                                mainUrl,
+                                subtitleCallback,
+                                callback
+                            )
+                        }
 
-                                loadFixedExtractor(
-                                    fixUrl(realIframe),
-                                    quality,
-                                    mainUrl,
-                                    subtitleCallback,
-                                    callback
-                                )
-                            }
-
-                            else -> {
-                                loadFixedExtractor(
-                                    iframe,
-                                    quality,
-                                    mainUrl,
-                                    subtitleCallback,
-                                    callback
-                                )
-                            }
+                        else -> {
+                            loadFixedExtractor(
+                                iframe,
+                                quality,
+                                mainUrl,
+                                subtitleCallback,
+                                callback
+                            )
                         }
                     }
                 }
-            }.awaitAll()
-        }
-        return true
+            }
+        }.awaitAll()
     }
+
+    return true
+}
 
     private fun getIndexQuality(str: String?): Int {
         return Regex("(\\d{3,4})[pP]")
