@@ -174,80 +174,77 @@ override suspend fun loadLinks(
     coroutineScope {
         val jobs = document.select(".mobius > .mirror > option").map { element ->
             async {
-                try {
-                    safeApiCall {
-                        val iframe = fixUrl(
-                            Jsoup.parse(base64Decode(element.attr("data-em")))
-                                .select("iframe").attr("src")
-                        )
+                safeApiCall {
+                    try {
+                        val iframe =
+                            fixUrl(
+                                Jsoup.parse(base64Decode(element.attr("data-em")))
+                                    .select("iframe")
+                                    .attr("src")
+                            )
                         val quality = getIndexQuality(element.text())
+
+                        val extractorCallback: (String) -> Unit = { linkUrl ->
+                            val label = if (quality == 0) name else "$name • ${quality}p"
+                            links.add(
+                                ExtractorLink(
+                                    source = name,
+                                    name = label,
+                                    url = linkUrl,
+                                    referer = mainUrl,
+                                    quality = quality,
+                                    type = ExtractorLinkType.VIDEO
+                                )
+                            )
+                        }
 
                         when {
                             iframe.startsWith("$mainUrl/utils/player/arch/") ||
-                                    iframe.startsWith("$mainUrl/utils/player/race/") -> {
-                                val link = request(iframe, ref = data).document.select("source").attr("src")
-                                val source = if (iframe.contains("/arch/")) "Arch" else "Race"
-                                val label = if (quality == Qualities.Unknown.value) source else "$source • ${quality}p"
-
-                                synchronized(links) {
-                                    links.add(
-                                        ExtractorLink(
-                                            source = source,
-                                            name = label,
-                                            url = link,
-                                            referer = mainUrl,
-                                            quality = quality,
-                                            type = ExtractorLinkType.VIDEO
-                                        )
-                                    )
-                                }
-                            }
+                                    iframe.startsWith("$mainUrl/utils/player/race/") ->
+                                request(iframe, ref = data).document.select("source").attr("src")
+                                    .let { extractorCallback(it) }
 
                             iframe.startsWith("https://aghanim.xyz/tools/redirect/") -> {
-                                val link = "https://rasa-cintaku-semakin-berantai.xyz/v/${
-                                    iframe.substringAfter("id=").substringBefore("&token")
-                                }"
-                                loadFixedExtractor(link, quality, mainUrl, subtitleCallback) { linkObj ->
-                                    synchronized(links) { links.add(linkObj) }
-                                }
+                                val link =
+                                    "https://rasa-cintaku-semakin-berantai.xyz/v/${
+                                        iframe.substringAfter("id=").substringBefore("&token")
+                                    }"
+                                loadFixedExtractor(link, quality, mainUrl, subtitleCallback) { extractorCallback(it.url) }
                             }
 
                             iframe.startsWith("$mainUrl/utils/player/framezilla/") ||
-                                    iframe.startsWith("https://uservideo.xyz") -> {
-                                val link = request(iframe, ref = data).document.select("iframe").attr("src")
-                                loadFixedExtractor(fixUrl(link), quality, mainUrl, subtitleCallback) { linkObj ->
-                                    synchronized(links) { links.add(linkObj) }
-                                }
-                            }
+                                    iframe.startsWith("https://uservideo.xyz") ->
+                                request(iframe, ref = data).document.select("iframe").attr("src")
+                                    .let { loadFixedExtractor(fixUrl(it), quality, mainUrl, subtitleCallback) { extractorCallback(it.url) } }
 
-                            else -> {
-                                loadFixedExtractor(iframe, quality, mainUrl, subtitleCallback) { linkObj ->
-                                    synchronized(links) { links.add(linkObj) }
-                                }
-                            }
+                            else -> loadFixedExtractor(iframe, quality, mainUrl, subtitleCallback) { extractorCallback(it.url) }
                         }
+
+                    } catch (_: Exception) {
+                        // Kalau ada error, skip aja, jangan crash
                     }
-                } catch (_: Exception) {
-                    // ignore, supaya tidak crash kalau situs berubah layout
                 }
             }
         }
         jobs.awaitAll()
     }
 
-    // Urutkan dari resolusi tertinggi ke rendah
+    // Sorting dari resolusi tertinggi ke rendah
     links.sortByDescending { it.quality }
 
-    // Kirim ke callback
-    links.forEach { callback.invoke(it) }
+    // Kirim ke callback setelah di-sort
+    links.forEach { callback(it) }
 
     return true
 }
 
-    private fun getIndexQuality(str: String?): Int {
-        return Regex("(\\d{3,4})[pP]").find(str ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull()
-            ?: Qualities.Unknown.value
-    }
+private fun getIndexQuality(str: String?): Int {
+    if (str == null) return 0
+    val match = Regex("(\\d{3,4})[pP]").findAll(str)
+        .mapNotNull { it.groupValues.getOrNull(1)?.toIntOrNull() }
+        .maxOrNull() // ambil resolusi tertinggi jika ada lebih dari satu angka
+    return match ?: 0
+}
 
     private suspend fun loadFixedExtractor(
         url: String,
