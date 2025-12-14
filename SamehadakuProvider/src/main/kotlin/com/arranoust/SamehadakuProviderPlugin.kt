@@ -1,7 +1,16 @@
 package com.arranoust
 
-import com.lagradost.cloudstream3.APIWrapper
+import android.content.Context
+import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
+import com.lagradost.cloudstream3.plugins.Plugin
 
-class SamehadakuProviderPlugin : APIWrapper() {
-    override val mainAPI = SamehadakuProvider()
+@CloudstreamPlugin
+class SamehadakuProviderPlugin : Plugin() {
+
+    override fun load(context: Context) {
+
+        // All providers should be added in this manner. Please don't edit the providers list
+        // directly.
+        registerMainAPI(AnimeSail())
+    }
 }

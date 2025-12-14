@@ -14,7 +14,7 @@ class SamehadakuProvider : MainAPI() {
     override val hasMainPage = true
 
     // Homepage
-    override fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get(mainUrl).document
 
         val items = document.select("a.series").mapNotNull { element ->
@@ -27,9 +27,9 @@ class SamehadakuProvider : MainAPI() {
             }
         }
 
-        return HomePageResponse(
-            listOf(HomePageList("Update Terbaru", items)),
-            hasNext = false
+        return newHomePageResponse(
+            "Update Terbaru",
+            items
         )
     }
 }
