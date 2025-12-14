@@ -174,14 +174,13 @@ class AnimeSail : MainAPI() {
     coroutineScope {
         document.select(".mobius > .mirror > option").map { option ->
             async {
-                try {
-                    val iframe = fixUrl(
-                        Jsoup.parse(base64Decode(option.attr("data-em")))
-                            .select("iframe")
-                            .attr("src")
-                    )
-
-                    if (iframe.isBlank()) return@async
+                safeApiCall {
+                    val iframe =
+                        fixUrl(
+                            Jsoup.parse(base64Decode(option.attr("data-em")))
+                                .select("iframe")
+                                .attr("src")
+                        )
 
                     val quality = getIndexQuality(option.text())
 
@@ -190,11 +189,11 @@ class AnimeSail : MainAPI() {
                             newExtractorLink(
                                 source = name,
                                 name = name,
-                                url = link.url
+                                url = link.url,
+                                type = link.type
                             ) {
                                 this.referer = link.referer
                                 this.quality = quality
-                                this.type = link.type
 
                                 if (link.headers.isNotEmpty()) {
                                     this.headers = link.headers
@@ -205,7 +204,6 @@ class AnimeSail : MainAPI() {
                             }
                         )
                     }
-                } catch (_: Throwable) {
                 }
             }
         }.awaitAll()
