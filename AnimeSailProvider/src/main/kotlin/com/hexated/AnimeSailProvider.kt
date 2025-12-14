@@ -156,11 +156,10 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
                 getStatus(document.select("tbody th:contains(Status)").next().text().trim())
             plot = document.selectFirst("div.entry-content > p")?.text()
             this.tags =
-                document.select("tbody tr")
-                    .firstOrNull { it.text().contains("Genre", ignoreCase = true) }
-                    ?.select("a")
-                    ?.map { it.text() }
-                    ?: emptyList()
+                document.select("tbody th:contains(Genre)")
+                    .next()
+                    .select("a")
+                    .map { it.text() }
             addMalId(tracker?.malId)
             addAniListId(tracker?.aniId?.toIntOrNull())
         }
