@@ -255,11 +255,7 @@ private fun getIndexQuality(str: String?): Int {
     ) {
         loadExtractor(url, referer, subtitleCallback) { link ->
             CoroutineScope(Dispatchers.IO).launch {
-
-            val label =
-                if (quality == Qualities.Unknown.value) name
-                 else "$name • ${quality}p"
-
+            val label = name 
                 callback.invoke(
                     ExtractorLink(
                         source = name,
