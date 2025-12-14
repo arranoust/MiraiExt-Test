@@ -14,27 +14,29 @@ class SamehadakuProvider : MainAPI() {
     override val hasMainPage = true
 
     // Homepage
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get(mainUrl).document
+override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+    val document = app.get(mainUrl).document
 
-        val items = document.select("a[itemprop=url]").mapNotNull { element ->
-            val title = element.attr("title") ?: return@mapNotNull null
-            val link = element.attr("href") ?: return@mapNotNull null
-            val poster = element.selectFirst("img")?.attr("src")
+    // Ambil semua anime terbaru
+    val items = document.select("a[itemprop=url]").mapNotNull { element ->
+        val title = element.attr("title").takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+        val link = element.attr("href").takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+        val poster = element.selectFirst("img")?.attr("src")
 
-            newAnimeSearchResponse(title, link, TvType.Anime) {
-                this.posterUrl = poster
-            }
-        } 
+        // Buat SearchResponse ala style terbaru
+        newAnimeSearchResponse(title, link, TvType.Anime) {
+            this.posterUrl = poster
+        }
+    }
 
-        return newHomePageResponse(
-            list = HomePageList(
-                name = "Update Terbaru",
-                list = items,
-                isHorizontalImages = true
-            ),
-            hasNext = false
-        )
-    } 
-
+    // Return homepage response horizontal
+    return newHomePageResponse(
+        list = HomePageList(
+            name = "Update Terbaru",
+            list = items,
+            isHorizontalImages = true
+        ),
+        hasNext = false
+    )
+}
 } 
