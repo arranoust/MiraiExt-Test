@@ -196,7 +196,8 @@ class AnimeSail : MainAPI() {
                     }
                 )
             }
-        } catch (_: Throwable) {}
+        } catch (_: Throwable) {
+        }
     }
 
     return true
