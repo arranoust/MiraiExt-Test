@@ -16,22 +16,25 @@ class SamehadakuProvider : MainAPI() {
     // Homepage
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get(mainUrl).document
+
         val items = document.select("a[itemprop=url]").mapNotNull { element ->
-        val title = element.attr("title") ?: return@mapNotNull null
-        val link = element.attr("href") ?: return@mapNotNull null
-        val poster = element.selectFirst("img")?.attr("src")
+            val title = element.attr("title") ?: return@mapNotNull null
+            val link = element.attr("href") ?: return@mapNotNull null
+            val poster = element.selectFirst("img")?.attr("src")
 
-        newAnimeSearchResponse(title, link, TvType.Anime) {
-            this.posterUrl = poster
-        }
-    }
+            newAnimeSearchResponse(title, link, TvType.Anime) {
+                this.posterUrl = poster
+            }
+        } 
 
-    return newHomePageResponse(
-        list = HomePageList(
-            name = "Update Terbaru",
-            list = items,
-            isHorizontalImages = true
-        ),
-        hasNext = false
-    )
-}
+        return newHomePageResponse(
+            list = HomePageList(
+                name = "Update Terbaru",
+                list = items,
+                isHorizontalImages = true
+            ),
+            hasNext = false
+        )
+    } 
+
+} 
