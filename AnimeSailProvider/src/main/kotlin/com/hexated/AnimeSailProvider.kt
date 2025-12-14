@@ -171,6 +171,8 @@ class AnimeSail : MainAPI() {
 
     val document = request(data).document
 
+    val scope = CoroutineScope(Dispatchers.IO)
+
     for (option in document.select(".mobius > .mirror > option")) {
         try {
             val iframe = fixUrl(
@@ -182,7 +184,7 @@ class AnimeSail : MainAPI() {
             val quality = getIndexQuality(option.text())
 
             loadExtractor(iframe, data, subtitleCallback) { link ->
-                launch {
+                scope.launch {
                     callback(
                         newExtractorLink(
                             source = name,
