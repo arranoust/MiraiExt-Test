@@ -115,13 +115,12 @@ class AnimeSail : MainAPI() {
             .mapNotNull { episodeElement ->
                 val anchor = episodeElement.selectFirst("a") ?: return@mapNotNull null
                 val episodeLink = fixUrl(anchor.attr("href"))
-                val episodeName = anchor.text()
-                    .replace("Subtitle Indonesia", "", ignoreCase = true)
-                    .trim()
-                val episodeNumber = Regex("Episode\\s?(\\d+)")
-                    .find(episodeName)
+                val episodeNumber = Regex("Episode\\s?(\\d+)", RegexOption.IGNORE_CASE)
+                    .find(anchor.text())
                     ?.groupValues?.getOrNull(1)
                     ?.toIntOrNull()
+
+                val episodeName = episodeNumber?.let { "Episode $it" } ?: anchor.text()
 
                 newEpisode(episodeLink) {
                     this.name = episodeName
