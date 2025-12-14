@@ -186,17 +186,19 @@ class AnimeSail : MainAPI() {
 
                         loadExtractor(iframe, data, subtitleCallback) { link ->
                             callback(
-                                ExtractorLink(
+                                newExtractorLink(
                                     source = name,
                                     name = name,
-                                    url = link.url,
-                                    referer = link.referer,
-                                    quality = quality,
-                                    type = link.type,
-                                    extractorData = link.extractorData,
+                                    url = link.url
+                                ) {
+                                    referer = link.referer
+                                    quality = quality
+                                    type = link.type
+                                    extractorData = link.extractorData
                                     headers = link.headers
-                                )
+                                }
                             )
+
                         }
                     }
                 }
