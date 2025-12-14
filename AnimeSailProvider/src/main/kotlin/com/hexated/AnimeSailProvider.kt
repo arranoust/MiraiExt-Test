@@ -172,41 +172,42 @@ class AnimeSail : MainAPI() {
     val document = request(data).document
 
     coroutineScope {
-        document.select(".mobius > .mirror > option").map { option ->
-            async {
-                val iframe = safeApiCall {
-                    fixUrl(
-                        Jsoup.parse(base64Decode(option.attr("data-em")))
-                            .select("iframe")
-                            .attr("src")
-                    )
-                } ?: return@async
+    document.select(".mobius > .mirror > option").map { option ->
+        async {
+            val iframe = safeApiCall {
+                fixUrl(
+                    Jsoup.parse(base64Decode(option.attr("data-em")))
+                        .select("iframe")
+                        .attr("src")
+                )
+            }.getOrNull() ?: return@async
 
-                val quality = getIndexQuality(option.text())
+            val quality = getIndexQuality(option.text())
 
-                loadExtractor(iframe, data, subtitleCallback) { link ->
-                    callback(
-                        newExtractorLink(
-                            source = name,
-                            name = name,
-                            url = link.url
-                        ) {
-                            this.referer = link.referer
-                            this.quality = quality
-                            this.type = link.type
+            loadExtractor(iframe, data, subtitleCallback) { link ->
+                callback(
+                    newExtractorLink(
+                        source = name,
+                        name = name,
+                        url = link.url
+                    ) {
+                        this.referer = link.referer
+                        this.quality = quality
+                        this.type = link.type
 
-                            if (link.headers.isNotEmpty()) {
-                                this.headers = link.headers
-                            }
-                            if (link.extractorData != null) {
-                                this.extractorData = link.extractorData
-                            }
+                        if (link.headers.isNotEmpty()) {
+                            this.headers = link.headers
                         }
-                    )
-                }
+                        if (link.extractorData != null) {
+                            this.extractorData = link.extractorData
+                        }
+                    }
+                )
             }
-        }.awaitAll()
-    }
+        }
+    }.awaitAll()
+}
+
 
     return true
 }
