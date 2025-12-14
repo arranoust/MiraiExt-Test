@@ -8,7 +8,7 @@ import com.lagradost.cloudstream3.utils.*
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 
-class Samehadaku : MainAPI() {
+class SamehadakuProvider : MainAPI() {
     override var mainUrl = "https://v1.samehadaku.how"
     override var name = "Samehadaku"
     override val hasMainPage = true
@@ -46,7 +46,7 @@ class Samehadaku : MainAPI() {
                 list = homeList,
                 isHorizontalImages = true
             ),
-            hasNext = false
+            hasNext = true
         )
     }
 
@@ -65,14 +65,17 @@ class Samehadaku : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val document = app.get("$mainUrl/?s=$query").document
-        return document.select("div.animepost").mapNotNull { it.toSearchResult() }
+        return document.select("main#main li[itemtype='http://schema.org/CreativeWork']").mapNotNull {
+            it.toSearchResult()
+        }
     }
 
     private fun Element.toSearchResult(): AnimeSearchResponse? {
         val a = this.selectFirst("div.thumb a") ?: return null
-        val title = this.selectFirst("h2.title a")?.text()?.trim() ?: a.attr("title") ?: return null
+        val title = this.selectFirst("h2.entry-title a")?.text()?.trim() ?: a.attr("title") ?: return null
         val href = fixUrlNull(a.attr("href")) ?: return null
         val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("src"))
+
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             this.posterUrl = posterUrl
         }
@@ -81,8 +84,8 @@ class Samehadaku : MainAPI() {
     override suspend fun load(url: String): LoadResponse? {
         val fixUrl = if (url.contains("/anime/")) url
         else app.get(url).document.selectFirst("div.nvs.nvsc a")?.attr("href")
-        val document = app.get(fixUrl ?: return null).document
 
+        val document = app.get(fixUrl ?: return null).document
         val title = document.selectFirst("h1.entry-title")?.text()?.removeBloat() ?: return null
         val poster = document.selectFirst("div.thumb > img")?.attr("src")
         val tags = document.select("div.genre-info > a").map { it.text() }
@@ -91,7 +94,6 @@ class Samehadaku : MainAPI() {
         }
         val status = getStatus(document.selectFirst("div.spe > span:contains(Status)")?.ownText() ?: return null)
         val type = getType(document.selectFirst("div.spe > span:contains(Type)")?.ownText()?.trim()?.lowercase() ?: "tv")
-        val rating = document.selectFirst("span.ratingValue")?.text()?.trim()?.toRatingInt()
         val description = document.select("div.desc p").text().trim()
         val trailer = document.selectFirst("div.trailer-anime iframe")?.attr("src")
 
@@ -104,11 +106,10 @@ class Samehadaku : MainAPI() {
 
         return newAnimeLoadResponse(title, url, type) {
             engName = title
-            posterUrl = poster
+            this.posterUrl = poster
             this.year = year
             addEpisodes(DubStatus.Subbed, episodes)
             showStatus = status
-            this.rating = rating
             plot = description
             addTrailer(trailer)
             this.tags = tags
@@ -122,11 +123,12 @@ class Samehadaku : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = app.get(data).document
-        document.select("div#downloadb li").apmap { el ->
-            el.select("a").apmap {
+
+        document.select("div#downloadb li").forEach { el ->
+            el.select("a").forEach {
                 loadFixedExtractor(
                     fixUrl(it.attr("href")),
-                    el.selectFirst("strong")?.text() ?: "",
+                    el.selectFirst("strong")?.text() ?: "Unknown",
                     "$mainUrl/",
                     subtitleCallback,
                     callback
