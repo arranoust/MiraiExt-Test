@@ -37,9 +37,9 @@ class SamehadakuProvider : MainAPI() {
 
 override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
     val url = when(request.name) {
-        "Episode Terbaru" -> "$mainUrl/anime-terbaru/page/$page"
+        "Episode Terbaru" -> "$mainUrl/${request.data.format(page)}"
         "Daftar Anime" -> "$mainUrl/daftar-anime-2/page/$page"
-        else -> "$mainUrl/anime-terbaru/page/$page"
+        else -> "$mainUrl/${request.data.format(page)}"
     }
 
     val document = app.get(url).document
@@ -59,22 +59,23 @@ override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageR
         list = HomePageList(
             name = request.name,
             list = homeList,
-            isHorizontalImages = true // horizontal untuk kedua tab
+            isHorizontalImages = true
         ),
         hasNext = true
     )
 }
 
-// Extension function sederhana untuk Daftar Anime
+// Extension function untuk Daftar Anime, buildable
 fun org.jsoup.nodes.Element.toAnimeListResult(): AnimeSearchResponse? {
     val anchor = this.selectFirst("div.animposx > a") ?: return null
     val url = anchor.attr("href")
     val title = anchor.selectFirst("div.data > div.title > h2")?.text() ?: return null
     val poster = anchor.selectFirst("img.anmsa")?.attr("src") ?: return null
 
-    return AnimeSearchResponse(
+    return newAnimeSearchResponse(
         name = title,
         url = url,
+        apiName = "samehadaku",
         posterUrl = poster
     )
 }
