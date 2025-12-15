@@ -31,23 +31,53 @@ class SamehadakuProvider : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
-        "anime-terbaru/page/%d" to "Episode Terbaru"
-    )
+    "anime-terbaru/page/%d" to "Episode Terbaru",
+    "daftar-anime-2/page/%d" to "Daftar Anime"
+)
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get("$mainUrl/${request.data.format(page)}").document
-        val items = document.select("li[itemtype='http://schema.org/CreativeWork']")
-        val homeList = items.mapNotNull { it.toLatestAnimeResult() }
-
-        return newHomePageResponse(
-            list = HomePageList(
-                name = request.name,
-                list = homeList,
-                isHorizontalImages = true
-            ),
-            hasNext = true
-        )
+override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+    val url = when(request.name) {
+        "Episode Terbaru" -> "$mainUrl/anime-terbaru/page/$page"
+        "Daftar Anime" -> "$mainUrl/daftar-anime-2/page/$page"
+        else -> "$mainUrl/anime-terbaru/page/$page"
     }
+
+    val document = app.get(url).document
+
+    val items = when(request.name) {
+        "Episode Terbaru" -> document.select("li[itemtype='http://schema.org/CreativeWork']")
+        "Daftar Anime" -> document.select("div.animepost")
+        else -> emptyList()
+    }
+
+    val homeList = items.mapNotNull { 
+        if(request.name == "Episode Terbaru") it.toLatestAnimeResult()
+        else it.toAnimeListResult()
+    }
+
+    return newHomePageResponse(
+        list = HomePageList(
+            name = request.name,
+            list = homeList,
+            isHorizontalImages = true // horizontal untuk kedua tab
+        ),
+        hasNext = true
+    )
+}
+
+// Extension function sederhana untuk Daftar Anime
+fun org.jsoup.nodes.Element.toAnimeListResult(): AnimeSearchResponse? {
+    val anchor = this.selectFirst("div.animposx > a") ?: return null
+    val url = anchor.attr("href")
+    val title = anchor.selectFirst("div.data > div.title > h2")?.text() ?: return null
+    val poster = anchor.selectFirst("img.anmsa")?.attr("src") ?: return null
+
+    return AnimeSearchResponse(
+        name = title,
+        url = url,
+        posterUrl = poster
+    )
+}
 
     private fun Element.toLatestAnimeResult(): AnimeSearchResponse? {
         val a = this.selectFirst("div.thumb a") ?: return null
