@@ -111,18 +111,19 @@ class SamehadakuProvider : MainAPI() {
         val description = document.select("div.desc p").text().trim()
         val trailer = document.selectFirst("div.trailer-anime iframe")?.attr("src")?.let { fixUrl(it) }
 
-        // Parsing episode list (support thumbnail)
         val episodes = document.select("div.lstepsiode.listeps ul li").mapNotNull { li ->
-            val header = li.selectFirst("span.lchx > a") ?: return@mapNotNull null
-            val epNumber = Regex("Episode\\s?(\\d+)").find(header.text())?.groupValues?.getOrNull(1)?.toIntOrNull()
-            val link = fixUrl(header.attr("href"))
-            val posterUrl = li.selectFirst(".epsright.thumbnailrighteps img")?.attr("src")?.let { fixUrl(it) }
+    val header = li.selectFirst("span.lchx > a") ?: return@mapNotNull null
+    val epNumber = Regex("Episode\\s?(\\d+)").find(header.text())?.groupValues?.getOrNull(1)?.toIntOrNull()
+    val link = fixUrl(header.attr("href"))
 
-            newEpisode(link) {
-                this.episode = epNumber
-                this.posterUrl = posterUrl
-            }
-        }.reversed()
+    val posterUrl = li.selectFirst("img")?.attr("src")?.let { fixUrl(it) }
+        ?: document.selectFirst("div.thumb > img")?.attr("src")?.let { fixUrl(it) }
+
+    newEpisode(link) {
+        this.episode = epNumber
+        this.posterUrl = posterUrl
+    }
+}.reversed()
 
         return newAnimeLoadResponse(title, url, type) {
             engName = title
