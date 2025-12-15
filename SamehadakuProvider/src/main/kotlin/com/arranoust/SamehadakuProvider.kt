@@ -5,6 +5,9 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addAniListId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addMalId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 
@@ -31,57 +34,27 @@ class SamehadakuProvider : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
-    "anime-terbaru/page/%d" to "Episode Terbaru",
-    "daftar-anime-2/page/%d" to "Daftar Anime"
-)
-
-override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-    val url = when(request.name) {
-        "Episode Terbaru" -> "$mainUrl/${request.data.format(page)}"
-        "Daftar Anime" -> "$mainUrl/daftar-anime-2/page/$page"
-        else -> "$mainUrl/${request.data.format(page)}"
-    }
-
-    val document = app.get(url).document
-
-    val items = when(request.name) {
-        "Episode Terbaru" -> document.select("li[itemtype='http://schema.org/CreativeWork']")
-        "Daftar Anime" -> document.select("div.animepost")
-        else -> emptyList()
-    }
-
-    val homeList = items.mapNotNull { 
-        if(request.name == "Episode Terbaru") it.toLatestAnimeResult()
-        else it.toAnimeListResult()
-    }
-
-    return newHomePageResponse(
-        list = HomePageList(
-            name = request.name,
-            list = homeList,
-            isHorizontalImages = true
-        ),
-        hasNext = true
+        "anime-terbaru/page/%d" to "Episode Terbaru"
     )
-}
 
-// Extension function untuk Daftar Anime, buildable
-fun org.jsoup.nodes.Element.toAnimeListResult(): AnimeSearchResponse? {
-    val anchor = this.selectFirst("div.animposx > a") ?: return null
-    val url = anchor.attr("href")
-    val title = anchor.selectFirst("div.data > div.title > h2")?.text() ?: return null
-    val poster = anchor.selectFirst("img.anmsa")?.attr("src") ?: return null
+    // ================== Homepage ==================
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        val document = safeGet("$mainUrl/${request.data.format(page)}") ?: return newHomePageResponse(listOf(), false)
+        val items = document.select("li[itemtype='http://schema.org/CreativeWork']")
+        val homeList = items.mapNotNull { it.toLatestAnimeResult() }
 
-    return newAnimeSearchResponse(
-        name = title,
-        url = url,
-        apiName = "samehadaku",
-        posterUrl = poster
-    )
-}
+        return newHomePageResponse(
+            list = HomePageList(
+                name = request.name,
+                list = homeList,
+                isHorizontalImages = true
+            ),
+            hasNext = true
+        )
+    }
 
     private fun Element.toLatestAnimeResult(): AnimeSearchResponse? {
-        val a = this.selectFirst("div.thumb a") ?: return null
+        val a = this.selectFirst("div.thumb a") ?: this.selectFirst("a") ?: return null
         val title = this.selectFirst("h2.entry-title a")?.text()?.trim()?.removeBloat()
             ?: a.attr("title")?.removeBloat()
             ?: return null
@@ -95,14 +68,15 @@ fun org.jsoup.nodes.Element.toAnimeListResult(): AnimeSearchResponse? {
         }
     }
 
+    // ================== Search ==================
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("$mainUrl/?s=$query").document
+        val document = safeGet("$mainUrl/?s=$query") ?: return emptyList()
         return document.select("main#main li[itemtype='http://schema.org/CreativeWork']")
             .mapNotNull { it.toSearchResult() }
     }
 
     private fun Element.toSearchResult(): AnimeSearchResponse? {
-        val a = this.selectFirst("div.thumb a") ?: return null
+        val a = this.selectFirst("div.thumb a") ?: this.selectFirst("a") ?: return null
         val title = this.selectFirst("h2.entry-title a")?.text()?.trim()?.removeBloat()
             ?: a.attr("title")?.removeBloat()
             ?: return null
@@ -114,43 +88,33 @@ fun org.jsoup.nodes.Element.toAnimeListResult(): AnimeSearchResponse? {
         }
     }
 
-    fun fixUrl(url: String): String = if (url.startsWith("http")) url else "$mainUrl/$url"
-
+    // ================== Load Anime ==================
     override suspend fun load(url: String): LoadResponse? {
         val finalUrl = if (url.contains("/anime/")) url
-        else app.get("$mainUrl/$url", headers = mapOf(
-            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-            "Referer" to mainUrl,
-            "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
-        )).document.selectFirst("div.nvs.nvsc a")?.attr("href")?.let { fixUrl(it) }
+        else safeGet("$mainUrl/$url")?.selectFirst("div.nvs.nvsc a")?.attr("href")?.let { fixUrl(it) } ?: return null
 
-        val document = app.get(finalUrl ?: return null, headers = mapOf(
-            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-            "Referer" to mainUrl,
-            "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
-        )).document
+        val document = safeGet(finalUrl) ?: return null
 
         val title = document.selectFirst("h1.entry-title")?.text()?.removeBloat() ?: return null
         val poster = document.selectFirst("div.thumb > img")?.attr("src")?.let { fixUrl(it) }
-        val tags = document.select("div.genre-info > a").map { it.text() }
+        val tags = document.select("div.genre-info > a").map { it.text() }.ifEmpty { listOf("Unknown") }
         val year = document.selectFirst("div.spe > span:contains(Rilis)")?.ownText()?.let {
             Regex("\\d{4}").find(it)?.value?.toIntOrNull()
         }
-        val status = getStatus(document.selectFirst("div.spe > span:contains(Status)")?.ownText() ?: return null)
+        val status = getStatus(document.selectFirst("div.spe > span:contains(Status)")?.ownText() ?: "")
         val type = getType(document.selectFirst("div.spe > span:contains(Type)")?.ownText()?.trim()?.lowercase() ?: "tv")
         val description = document.select("div.desc p").text().trim()
         val trailer = document.selectFirst("div.trailer-anime iframe")?.attr("src")?.let { fixUrl(it) }
 
         val episodes = document.select("div.lstepsiode.listeps ul li").mapNotNull { li ->
-    val header = li.selectFirst("span.lchx > a") ?: return@mapNotNull null
-    val epNumber = Regex("Episode\\s?(\\d+)").find(header.text())?.groupValues?.getOrNull(1)?.toIntOrNull()
-    val link = fixUrl(header.attr("href"))
-
-    newEpisode(link) {
-        this.episode = epNumber
-        this.posterUrl = poster
-    }
-}.reversed()
+            val header = li.selectFirst("span.lchx > a") ?: return@mapNotNull null
+            val epNumber = Regex("Episode\\s?(\\d+)").find(header.text())?.groupValues?.getOrNull(1)?.toIntOrNull()
+            val link = fixUrl(header.attr("href"))
+            newEpisode(link) {
+                this.episode = epNumber
+                this.posterUrl = poster
+            }
+        }.reversed()
 
         return newAnimeLoadResponse(title, url, type) {
             engName = title
@@ -164,13 +128,14 @@ fun org.jsoup.nodes.Element.toAnimeListResult(): AnimeSearchResponse? {
         }
     }
 
+    // ================== Load Links ==================
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data).document
+        val document = safeGet(data) ?: return false
 
         document.select("div#downloadb li").forEach { el ->
             el.select("a").forEach {
@@ -194,7 +159,7 @@ fun org.jsoup.nodes.Element.toAnimeListResult(): AnimeSearchResponse? {
         callback: (ExtractorLink) -> Unit
     ) {
         loadExtractor(url, referer, subtitleCallback) { link ->
-            runBlocking {
+            CoroutineScope(Dispatchers.IO).launch {
                 callback.invoke(
                     newExtractorLink(link.name, link.name, link.url, link.type) {
                         this.referer = link.referer
@@ -207,6 +172,7 @@ fun org.jsoup.nodes.Element.toAnimeListResult(): AnimeSearchResponse? {
         }
     }
 
+    // ================== Utils ==================
     private fun String.fixQuality(): Int = when (this.uppercase()) {
         "4K" -> Qualities.P2160.value
         "FULLHD" -> Qualities.P1080.value
@@ -216,4 +182,13 @@ fun org.jsoup.nodes.Element.toAnimeListResult(): AnimeSearchResponse? {
 
     private fun String.removeBloat(): String =
         this.replace(Regex("(Nonton)|(Anime)|(Subtitle\\sIndonesia)|(Sub\\sIndo)"), "").trim()
+
+    private fun fixUrl(url: String): String = if (url.startsWith("http")) url else "$mainUrl/$url"
+    private fun fixUrlNull(url: String?): String? = url?.let { fixUrl(it) }
+
+    private suspend fun safeGet(url: String) = try {
+        app.get(url).document
+    } catch (_: Exception) {
+        null
+    }
 }
