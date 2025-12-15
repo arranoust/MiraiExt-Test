@@ -30,56 +30,24 @@ class SamehadakuProvider : MainAPI() {
         }
     }
 
-override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-    val url = "$mainUrl/${request.data.format(page)}"
-    val document = app.get(url).document
-
-    val items = when (request.name) {
-        "Terbaru" -> document.select("li[itemtype='http://schema.org/CreativeWork']")
-        "Daftar Anime" -> document.select("div.animepost")
-        else -> return newHomePageResponse(listOf())
-    }
-
-    val homeList = items.mapNotNull { element ->
-        when (request.name) {
-            "Terbaru" -> element.toLatestAnimeResult() 
-            "Daftar Anime" -> element.toAnimeListResult()  
-            else -> null
-        }
-    }
-
-    return newHomePageResponse(
-        list = HomePageList(
-            name = request.name,
-            list = homeList,
-            isHorizontalImages = request.name == "Terbaru"
-        ),
-        hasNext = true
+    override val mainPage = mainPageOf(
+        "anime-terbaru/page/%d" to "Episode Terbaru"
     )
-}
 
-private fun Element.toAnimeListResult(): AnimeSearchResponse? {
-    val a = this.selectFirst("div.animposx > a") ?: return null
-    val title = a.attr("title")?.trim()?.removeBloat() ?: return null
-    val href = fixUrlNull(a.attr("href")) ?: return null
-    val posterUrl = fixUrlNull(a.selectFirst("img")?.attr("src"))
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        val document = app.get("$mainUrl/${request.data.format(page)}").document
+        val items = document.select("li[itemtype='http://schema.org/CreativeWork']")
+        val homeList = items.mapNotNull { it.toLatestAnimeResult() }
 
-    return newAnimeSearchResponse(title, href, TvType.Anime) {
-        this.posterUrl = posterUrl
+        return newHomePageResponse(
+            list = HomePageList(
+                name = request.name,
+                list = homeList,
+                isHorizontalImages = true
+            ),
+            hasNext = true
+        )
     }
-}
-
-
-    private fun Element.toAnimeListResult(): AnimeSearchResponse? {
-    val a = this.selectFirst("a") ?: return null
-    val title = a.attr("title")?.trim()?.removeBloat() ?: a.text().trim().removeBloat()
-    val href = fixUrlNull(a.attr("href")) ?: return null
-    val posterUrl = fixUrlNull(this.selectFirst("div.content-thumb img")?.attr("src"))
-
-    return newAnimeSearchResponse(title, href, TvType.Anime) {
-        this.posterUrl = posterUrl
-    }
-}
 
     private fun Element.toLatestAnimeResult(): AnimeSearchResponse? {
         val a = this.selectFirst("div.thumb a") ?: return null
