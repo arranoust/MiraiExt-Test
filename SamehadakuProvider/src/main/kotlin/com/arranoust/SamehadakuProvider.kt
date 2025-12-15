@@ -5,10 +5,9 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addAniListId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addMalId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.delay
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 import org.jsoup.nodes.Element
 
 class SamehadakuProvider : MainAPI() {
@@ -140,48 +139,73 @@ class SamehadakuProvider : MainAPI() {
     ): Boolean {
         val document = safeGet(data) ?: return false
 
-        document.select("div#downloadb li").forEach { el ->
-            el.select("a").forEach {
-                loadFixedExtractor(
-                    fixUrl(it.attr("href")),
-                    el.selectFirst("strong")?.text() ?: "Unknown",
-                    "$mainUrl/",
-                    subtitleCallback,
-                    callback
-                )
+        val links = mutableListOf<ExtractorLink>()
+        for (el in document.select("div#downloadb li")) {
+            val qualityName = el.selectFirst("strong")?.text() ?: "Unknown"
+            for (a in el.select("a")) {
+                val href = a.attr("href").takeIf { it.isNotEmpty() } ?: continue
+                val ex = loadFixedExtractorSusp(fixUrl(href), qualityName, "$mainUrl/", subtitleCallback)
+                if (ex != null && links.none { it.url == ex.url }) links.add(ex)
             }
         }
-        return true
-    }
 
-    private suspend fun loadFixedExtractor(
+        prioritizeLinks(links).forEach { callback(it) }
+        return links.isNotEmpty()
+    }
+    private suspend fun loadFixedExtractorSusp(
         url: String,
         name: String,
         referer: String? = null,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        // referer diset langsung di newExtractorLink
-        loadExtractor(url, referer, subtitleCallback) { link ->
-            CoroutineScope(Dispatchers.IO).launch {
-                callback.invoke(
-                    newExtractorLink(link.name, link.name, link.url, link.type) {
-                        this.referer = link.referer
-                        this.quality = name.fixQuality()
-                        this.headers = link.headers
-                        this.extractorData = link.extractorData
-                    }
-                )
+        subtitleCallback: (SubtitleFile) -> Unit
+    ): ExtractorLink? {
+        return try {
+            suspendCoroutine { cont ->
+                loadExtractor(url, referer, subtitleCallback) { link ->
+                    cont.resume(
+                        newExtractorLink(link.name, link.name, link.url, link.type) {
+                            this.referer = link.referer
+                            this.quality = name.fixQuality()
+                            this.headers = link.headers
+                            this.extractorData = link.extractorData
+                        }
+                    )
+                }
             }
+        } catch (_: Exception) {
+            null
         }
     }
 
+    private var preferredQuality: String = "Auto" // options: Auto, 2160, 1080, 720, 480
+    fun setPreferredQuality(value: String) { preferredQuality = value }
+
+    private fun prioritizeLinks(links: List<ExtractorLink>): List<ExtractorLink> {
+        if (preferredQuality.equals("Auto", true)) return links
+        val prefInt = preferredQuality.filter { it.isDigit() }.toIntOrNull() ?: return links
+        return links.sortedWith(compareByDescending<ExtractorLink> {
+            val urlLower = (it.url ?: "").lowercase()
+            val adaptiveBonus = if (urlLower.contains("m3u8") || urlLower.contains(".mpd")) 10 else 0
+
+            val qualityScore = when {
+                it.quality == prefInt -> 1000
+                it.quality > prefInt -> 500 - (it.quality - prefInt)
+                it.quality < prefInt -> 200 - (prefInt - it.quality)
+                else -> 0
+            }
+
+            qualityScore + adaptiveBonus
+        }.thenByDescending { it.quality })
+    }
+
     // ================== Utils ==================
-    private fun String.fixQuality(): Int = when (this.uppercase()) {
-        "4K" -> Qualities.P2160.value
-        "FULLHD" -> Qualities.P1080.value
-        "MP4HD" -> Qualities.P720.value
-        else -> this.filter { it.isDigit() }.toIntOrNull() ?: Qualities.Unknown.value
+    private fun String.fixQuality(): Int {
+        val s = this.lowercase()
+        if (s.contains("4k") || s.contains("2160")) return Qualities.P2160.value
+        if (s.contains("1080") || s.contains("full") || s.contains("fhd")) return Qualities.P1080.value
+        if (s.contains("720") || s.contains("hd") || s.contains("mp4hd")) return Qualities.P720.value
+        val num = this.filter { it.isDigit() }.toIntOrNull()
+        if (num != null) return num
+        return Qualities.Unknown.value
     }
 
     private fun String.removeBloat(): String =
@@ -191,16 +215,25 @@ class SamehadakuProvider : MainAPI() {
     private fun fixUrlNull(url: String?): String? = url?.let { fixUrl(it) }
 
     // ================== SafeGet with Headers ==================
-    private suspend fun safeGet(url: String) = try {
-        // pake headers di parameter get, sesuai API NiceHTTP terbaru
-        app.get(
-            url,
-            headers = mapOf(
-                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36",
-                "Accept" to "text/html"
-            )
-        ).document
-    } catch (_: Exception) {
-        null
+    private suspend fun safeGet(url: String, retries: Int = 2, backoffMs: Long = 500L): org.jsoup.nodes.Document? {
+        var attempt = 0
+        var lastEx: Exception? = null
+        while (attempt <= retries) {
+            try {
+                return app.get(
+                    url,
+                    headers = mapOf(
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36",
+                        "Accept" to "text/html"
+                    )
+                ).document
+            } catch (e: Exception) {
+                lastEx = e
+                if (attempt == retries) break
+                delay(backoffMs * (1 shl attempt))
+                attempt++
+            }
+        }
+        return null
     }
 }
