@@ -46,13 +46,11 @@ override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageR
         else -> return newHomePageResponse(listOf())
     }
 
-    val homeList = items.mapNotNull { element ->
-        when (request.name) {
-            "Terbaru" -> element.toLatestAnimeResult()
-            "Daftar Anime", "Movie" -> element.toAnimeListResult()
-            else -> null
-        }
-    }
+    val items = when (request.name) {
+    "Terbaru" -> document.select("li[itemtype='http://schema.org/CreativeWork']")
+    "Daftar Anime", "Movie" -> document.select("div.animepost")
+    else -> return newHomePageResponse(listOf())
+}
 
     return newHomePageResponse(
         list = HomePageList(
@@ -66,11 +64,14 @@ override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageR
 
     private fun Element.toAnimeListResult(): AnimeSearchResponse? {
     val a = this.selectFirst("a") ?: return null
-    val title = a.text().trim().removeBloat()
+    val title = a.attr("title")?.trim()?.removeBloat() ?: a.text().trim().removeBloat()
     val href = fixUrlNull(a.attr("href")) ?: return null
+    val posterUrl = fixUrlNull(this.selectFirst("div.content-thumb img")?.attr("src"))
 
-    return newAnimeSearchResponse(title, href, TvType.Anime)
+    return newAnimeSearchResponse(title, href, TvType.Anime) {
+        this.posterUrl = posterUrl
     }
+}
 
     private fun Element.toLatestAnimeResult(): AnimeSearchResponse? {
         val a = this.selectFirst("div.thumb a") ?: return null
