@@ -115,9 +115,7 @@ class SamehadakuProvider : MainAPI() {
     val header = li.selectFirst("span.lchx > a") ?: return@mapNotNull null
     val epNumber = Regex("Episode\\s?(\\d+)").find(header.text())?.groupValues?.getOrNull(1)?.toIntOrNull()
     val link = fixUrl(header.attr("href"))
-
-    val posterUrl = li.selectFirst("img")?.attr("src")?.let { fixUrl(it) }
-        ?: document.selectFirst("div.thumb > img")?.attr("src")?.let { fixUrl(it) }
+    val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("src"))
 
     newEpisode(link) {
         this.episode = epNumber
