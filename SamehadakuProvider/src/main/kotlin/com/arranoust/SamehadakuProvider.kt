@@ -56,7 +56,7 @@ override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageR
     }
 
     // Cek apakah ada halaman selanjutnya
-    val hasNext = document.select("a.nextpostslink").isNotEmpty() // samehadaku pakai class ini untuk next page
+    val hasNext = document.select("a.nextpostslink").isNotEmpty()
 
     return newHomePageResponse(
         list = HomePageList(
@@ -68,31 +68,17 @@ override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageR
     )
 }
 
-// Extension function untuk parse Daftar Anime
+// Extension function sederhana untuk homepage, hanya title, url, poster
 fun org.jsoup.nodes.Element.toAnimeListResult(): AnimeSearchResponse? {
     val anchor = this.selectFirst("div.animposx > a") ?: return null
     val url = anchor.attr("href")
     val title = anchor.selectFirst("div.data > div.title > h2")?.text() ?: return null
     val poster = anchor.selectFirst("img.anmsa")?.attr("src") ?: return null
-    val type = anchor.selectFirst("div.data > div.type")?.text()
-    val score = anchor.selectFirst("div.content-thumb > div.score")?.text()?.replace("★", "")?.trim()
-
-    // Ambil description dari stooltip
-    val description = this.selectFirst("div.stooltip .ttls")?.text() ?: ""
-
-    // Ambil genre, gabungkan jadi string
-    val genres = this.select("div.stooltip .genres .mta a")
-        .map { it.text() }
-        .joinToString(", ")
 
     return AnimeSearchResponse(
-        title = title,
+        name = title,
         url = url,
-        posterUrl = poster,
-        description = description,
-        quality = type ?: "",
-        score = score,
-        genres = genres
+        posterUrl = poster
     )
 }
 
