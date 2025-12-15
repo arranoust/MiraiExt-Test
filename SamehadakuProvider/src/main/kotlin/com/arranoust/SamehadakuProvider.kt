@@ -30,24 +30,46 @@ class SamehadakuProvider : MainAPI() {
         }
     }
 
-    // Homepage cuma Terbaru
-    override val mainPage = mainPageOf(
-        "anime-terbaru/page/%d" to "Terbaru"
+override val mainPage = mainPageOf(
+    "anime-terbaru/page/%d" to "Terbaru",                
+    "daftar-anime-2/page/%d" to "Daftar Anime",          
+    "daftar-anime-2/?title=&status=&type=Movie&order=title&page=%d" to "Movie"  
+)
+
+override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+    val url = "$mainUrl/${request.data.format(page)}"
+    val document = app.get(url).document
+    val items = when (request.name) {
+        "Terbaru" -> document.select("li[itemtype='http://schema.org/CreativeWork']")
+        "Daftar Anime" -> document.select("div.postbody > div.daftar > ul > li") 
+        "Movie" -> document.select("div.postbody > div.daftar > ul > li") 
+        else -> return newHomePageResponse(listOf())
+    }
+
+    val homeList = items.mapNotNull { element ->
+        when (request.name) {
+            "Terbaru" -> element.toLatestAnimeResult()
+            "Daftar Anime", "Movie" -> element.toAnimeListResult()
+            else -> null
+        }
+    }
+
+    return newHomePageResponse(
+        list = HomePageList(
+            name = request.name,
+            list = homeList,
+            isHorizontalImages = request.name == "Terbaru"
+        ),
+        hasNext = true
     )
+}
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get("$mainUrl/${request.data.format(page)}").document
-        val items = document.select("li[itemtype='http://schema.org/CreativeWork']")
-        val homeList = items.mapNotNull { it.toLatestAnimeResult() }
+    private fun Element.toAnimeListResult(): AnimeSearchResponse? {
+    val a = this.selectFirst("a") ?: return null
+    val title = a.text().trim().removeBloat()
+    val href = fixUrlNull(a.attr("href")) ?: return null
 
-        return newHomePageResponse(
-            list = HomePageList(
-                name = request.name,
-                list = homeList,
-                isHorizontalImages = true
-            ),
-            hasNext = true
-        )
+    return newAnimeSearchResponse(title, href, TvType.Anime)
     }
 
     private fun Element.toLatestAnimeResult(): AnimeSearchResponse? {
@@ -115,11 +137,10 @@ class SamehadakuProvider : MainAPI() {
     val header = li.selectFirst("span.lchx > a") ?: return@mapNotNull null
     val epNumber = Regex("Episode\\s?(\\d+)").find(header.text())?.groupValues?.getOrNull(1)?.toIntOrNull()
     val link = fixUrl(header.attr("href"))
-    val poster = document.selectFirst("div.thumb > img")?.attr("src")?.let { fixUrl(it) } ?: poster
 
     newEpisode(link) {
         this.episode = epNumber
-        this.posterUrl = posterUrl
+        this.posterUrl = poster
     }
 }.reversed()
 
