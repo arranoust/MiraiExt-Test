@@ -153,28 +153,29 @@ class SamehadakuProvider : MainAPI() {
         return links.isNotEmpty()
     }
     private suspend fun loadFixedExtractorSusp(
-        url: String,
-        name: String,
-        referer: String? = null,
-        subtitleCallback: (SubtitleFile) -> Unit
-    ): ExtractorLink? {
-        return try {
-            suspendCoroutine { cont ->
-                loadExtractor(url, referer, subtitleCallback) { link ->
-                    cont.resume(
-                        newExtractorLink(link.name, link.name, link.url, link.type) {
-                            this.referer = link.referer
-                            this.quality = name.fixQuality()
-                            this.headers = link.headers
-                            this.extractorData = link.extractorData
-                        }
-                    )
-                }
-            }
-        } catch (_: Exception) {
-            null
+    url: String,
+    name: String,
+    referer: String? = null,
+    subtitleCallback: (SubtitleFile) -> Unit
+): ExtractorLink? {
+    var result: ExtractorLink? = null
+
+    loadExtractor(url, referer, subtitleCallback) { link ->
+        result = newExtractorLink(
+            link.name,
+            link.name,
+            link.url,
+            link.type
+        ) {
+            this.referer = link.referer
+            this.quality = name.fixQuality()
+            this.headers = link.headers
+            this.extractorData = link.extractorData
         }
     }
+
+    return result
+}
 
     private var preferredQuality: String = "Auto" // options: Auto, 2160, 1080, 720, 480
     fun setPreferredQuality(value: String) { preferredQuality = value }
