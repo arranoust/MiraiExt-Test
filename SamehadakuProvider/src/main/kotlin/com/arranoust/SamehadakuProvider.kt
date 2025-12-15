@@ -30,27 +30,23 @@ class SamehadakuProvider : MainAPI() {
         }
     }
 
-override val mainPage = mainPageOf(
-    "anime-terbaru/page/%d" to "Terbaru",                
-    "daftar-anime-2/page/%d" to "Daftar Anime",          
-    "daftar-anime-2/?title=&status=&type=Movie&order=title&page=%d" to "Movie"  
-)
-
 override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
     val url = "$mainUrl/${request.data.format(page)}"
     val document = app.get(url).document
+
     val items = when (request.name) {
         "Terbaru" -> document.select("li[itemtype='http://schema.org/CreativeWork']")
-        "Daftar Anime" -> document.select("div.postbody > div.daftar > ul > li") 
-        "Movie" -> document.select("div.postbody > div.daftar > ul > li") 
+        "Daftar Anime", "Movie" -> document.select("div.animepost")
         else -> return newHomePageResponse(listOf())
     }
 
-    val items = when (request.name) {
-    "Terbaru" -> document.select("li[itemtype='http://schema.org/CreativeWork']")
-    "Daftar Anime", "Movie" -> document.select("div.animepost")
-    else -> return newHomePageResponse(listOf())
-}
+    val homeList = items.mapNotNull { element ->
+        when (request.name) {
+            "Terbaru" -> element.toLatestAnimeResult()
+            "Daftar Anime", "Movie" -> element.toAnimeListResult()
+            else -> null
+        }
+    }
 
     return newHomePageResponse(
         list = HomePageList(
