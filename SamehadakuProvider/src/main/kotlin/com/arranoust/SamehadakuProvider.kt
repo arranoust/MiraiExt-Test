@@ -113,15 +113,17 @@ class SamehadakuProvider : MainAPI() {
     val trailer = document.selectFirst("div.trailer-anime iframe")?.attr("src")
 
     val episodes = document.select("div.lstepsiode.listeps ul li").mapNotNull { li ->
-        val header = li.selectFirst("span.lchx > a") ?: return@mapNotNull null
-        val epNumber = Regex("Episode\\s?(\\d+)").find(header.text())?.groupValues?.getOrNull(1)?.toIntOrNull()
-        val link = fixUrl(header.attr("href"))
+    val header = li.selectFirst("span.lchx > a") ?: return@mapNotNull null
+    val epNumber = Regex("Episode\\s?(\\d+)").find(header.text())?.groupValues?.getOrNull(1)?.toIntOrNull()
+    val link = fixUrl(header.attr("href"))
 
-        newEpisode(link) {
-            this.episode = epNumber
-            this.posterUrl = elt.selectFirst(".epsright.thumbnailrighteps img")?.attr("src")
+    newEpisode(link) {
+        this.episode = epNumber
+        this.posterUrl = li.selectFirst("div.epsright.thumbnailrighteps img")?.attr("src")?.let {
+            if (it.startsWith("http")) it else "$mainUrl/$it"
         }
-    }.reversed()
+    }
+}.reversed()
 
     return newAnimeLoadResponse(title, url, type) {
         engName = title
