@@ -161,6 +161,7 @@ class SamehadakuProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
+        // referer diset langsung di newExtractorLink
         loadExtractor(url, referer, subtitleCallback) { link ->
             CoroutineScope(Dispatchers.IO).launch {
                 callback.invoke(
@@ -189,14 +190,16 @@ class SamehadakuProvider : MainAPI() {
     private fun fixUrl(url: String): String = if (url.startsWith("http")) url else "$mainUrl/$url"
     private fun fixUrlNull(url: String?): String? = url?.let { fixUrl(it) }
 
-    // ================== SafeGet with User-Agent ==================
+    // ================== SafeGet with Headers ==================
     private suspend fun safeGet(url: String) = try {
-        app.get(url) {
-            addHeader(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
+        // pake headers di parameter get, sesuai API NiceHTTP terbaru
+        app.get(
+            url,
+            headers = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36",
+                "Accept" to "text/html"
             )
-        }.document
+        ).document
     } catch (_: Exception) {
         null
     }
