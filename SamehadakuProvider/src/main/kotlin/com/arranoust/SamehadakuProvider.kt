@@ -39,7 +39,8 @@ class SamehadakuProvider : MainAPI() {
 
     // ================== Homepage ==================
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = safeGet("$mainUrl/${request.data.format(page)}") ?: return newHomePageResponse(listOf(), false)
+        val document = safeGet("$mainUrl/${request.data.format(page)}")
+            ?: return newHomePageResponse(listOf(), false)
         val items = document.select("li[itemtype='http://schema.org/CreativeWork']")
         val homeList = items.mapNotNull { it.toLatestAnimeResult() }
 
@@ -68,30 +69,31 @@ class SamehadakuProvider : MainAPI() {
         }
     }
 
-// ================== Search ==================
-override suspend fun search(query: String): List<SearchResponse> {
-    val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
-    val document = safeGet("$mainUrl/?s=$encodedQuery") ?: return emptyList()
-    
-    return document.select("main#main article[itemtype='http://schema.org/CreativeWork']")
-        .mapNotNull { it.toSearchResult() }
-}
+    // ================== Search ==================
+    override suspend fun search(query: String): List<SearchResponse> {
+        val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
+        val document = safeGet("$mainUrl/?s=$encodedQuery") ?: return emptyList()
 
-private fun Element.toSearchResult(): AnimeSearchResponse? {
-    val a = this.selectFirst("div.animposx a") ?: return null
-    val title = a.selectFirst("h2")?.text()?.trim() ?: a.attr("title") ?: return null
-    val href = a.attr("href").takeIf { it.isNotEmpty() } ?: return null
-    val posterUrl = a.selectFirst("img")?.attr("src")?.let { fixUrl(it) }
-
-    return newAnimeSearchResponse(title, href, TvType.Anime) {
-        this.posterUrl = posterUrl
+        return document.select("main#main article[itemtype='http://schema.org/CreativeWork']")
+            .mapNotNull { it.toSearchResult() }
     }
-}
+
+    private fun Element.toSearchResult(): AnimeSearchResponse? {
+        val a = this.selectFirst("div.animposx a") ?: return null
+        val title = a.selectFirst("h2")?.text()?.trim() ?: a.attr("title") ?: return null
+        val href = a.attr("href").takeIf { it.isNotEmpty() } ?: return null
+        val posterUrl = a.selectFirst("img")?.attr("src")?.let { fixUrl(it) }
+
+        return newAnimeSearchResponse(title, href, TvType.Anime) {
+            this.posterUrl = posterUrl
+        }
+    }
 
     // ================== Load Anime ==================
     override suspend fun load(url: String): LoadResponse? {
         val finalUrl = if (url.contains("/anime/")) url
-        else safeGet("$mainUrl/$url")?.selectFirst("div.nvs.nvsc a")?.attr("href")?.let { fixUrl(it) } ?: return null
+        else safeGet("$mainUrl/$url")?.selectFirst("div.nvs.nvsc a")?.attr("href")?.let { fixUrl(it) }
+            ?: return null
 
         val document = safeGet(finalUrl) ?: return null
 
@@ -102,7 +104,8 @@ private fun Element.toSearchResult(): AnimeSearchResponse? {
             Regex("\\d{4}").find(it)?.value?.toIntOrNull()
         }
         val status = getStatus(document.selectFirst("div.spe > span:contains(Status)")?.ownText() ?: "")
-        val type = getType(document.selectFirst("div.spe > span:contains(Type)")?.ownText()?.trim()?.lowercase() ?: "tv")
+        val type =
+            getType(document.selectFirst("div.spe > span:contains(Type)")?.ownText()?.trim()?.lowercase() ?: "tv")
         val description = document.select("div.desc p").text().trim()
         val trailer = document.selectFirst("div.trailer-anime iframe")?.attr("src")?.let { fixUrl(it) }
 
@@ -186,8 +189,14 @@ private fun Element.toSearchResult(): AnimeSearchResponse? {
     private fun fixUrl(url: String): String = if (url.startsWith("http")) url else "$mainUrl/$url"
     private fun fixUrlNull(url: String?): String? = url?.let { fixUrl(it) }
 
+    // ================== SafeGet with User-Agent ==================
     private suspend fun safeGet(url: String) = try {
-        app.get(url).document
+        app.get(url) {
+            addHeader(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
+            )
+        }.document
     } catch (_: Exception) {
         null
     }
