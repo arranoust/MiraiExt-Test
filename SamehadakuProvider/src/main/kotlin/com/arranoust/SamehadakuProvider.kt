@@ -68,25 +68,25 @@ class SamehadakuProvider : MainAPI() {
         }
     }
 
-    // ================== Search ==================
-    override suspend fun search(query: String): List<SearchResponse> {
-        val document = safeGet("$mainUrl/?s=$query") ?: return emptyList()
-        return document.select("main#main li[itemtype='http://schema.org/CreativeWork']")
-            .mapNotNull { it.toSearchResult() }
-    }
+// ================== Search ==================
+override suspend fun search(query: String): List<SearchResponse> {
+    val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
+    val document = safeGet("$mainUrl/?s=$encodedQuery") ?: return emptyList()
+    
+    return document.select("main#main article[itemtype='http://schema.org/CreativeWork']")
+        .mapNotNull { it.toSearchResult() }
+}
 
-    private fun Element.toSearchResult(): AnimeSearchResponse? {
-        val a = this.selectFirst("div.thumb a") ?: this.selectFirst("a") ?: return null
-        val title = this.selectFirst("h2.entry-title a")?.text()?.trim()?.removeBloat()
-            ?: a.attr("title")?.removeBloat()
-            ?: return null
-        val href = fixUrlNull(a.attr("href")) ?: return null
-        val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("src"))
+private fun Element.toSearchResult(): AnimeSearchResponse? {
+    val a = this.selectFirst("div.animposx a") ?: return null
+    val title = a.selectFirst("h2")?.text()?.trim() ?: a.attr("title") ?: return null
+    val href = a.attr("href").takeIf { it.isNotEmpty() } ?: return null
+    val posterUrl = a.selectFirst("img")?.attr("src")?.let { fixUrl(it) }
 
-        return newAnimeSearchResponse(title, href, TvType.Anime) {
-            this.posterUrl = posterUrl
-        }
+    return newAnimeSearchResponse(title, href, TvType.Anime) {
+        this.posterUrl = posterUrl
     }
+}
 
     // ================== Load Anime ==================
     override suspend fun load(url: String): LoadResponse? {
