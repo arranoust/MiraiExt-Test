@@ -37,7 +37,7 @@ class SamehadakuProvider : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get("$mainUrl/${request.data.format(page)}").document
-        val items = document.select("li[itemtype='http://schema.org/CreativeWork']") // Terbaru
+        val items = document.select("li[itemtype='http://schema.org/CreativeWork']")
         val homeList = items.mapNotNull { it.toLatestAnimeResult() }
 
         return newHomePageResponse(
@@ -67,9 +67,8 @@ class SamehadakuProvider : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val document = app.get("$mainUrl/?s=$query").document
-        return document.select("main#main li[itemtype='http://schema.org/CreativeWork']").mapNotNull {
-            it.toSearchResult()
-        }
+        return document.select("main#main li[itemtype='http://schema.org/CreativeWork']")
+            .mapNotNull { it.toSearchResult() }
     }
 
     private fun Element.toSearchResult(): AnimeSearchResponse? {
@@ -85,57 +84,57 @@ class SamehadakuProvider : MainAPI() {
         }
     }
 
-fun fixUrl(url: String): String {
-    return if (url.startsWith("http")) url else "$mainUrl/$url"
-}
+    fun fixUrl(url: String): String = if (url.startsWith("http")) url else "$mainUrl/$url"
 
-override suspend fun load(url: String): LoadResponse? {
-    val finalUrl = if (url.contains("/anime/")) url
-    else app.get("$mainUrl/$url", headers = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-        "Referer" to mainUrl,
-        "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
-    )).document.selectFirst("div.nvs.nvsc a")?.attr("href")?.let { fixUrl(it) }
+    override suspend fun load(url: String): LoadResponse? {
+        val finalUrl = if (url.contains("/anime/")) url
+        else app.get("$mainUrl/$url", headers = mapOf(
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Referer" to mainUrl,
+            "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
+        )).document.selectFirst("div.nvs.nvsc a")?.attr("href")?.let { fixUrl(it) }
 
-    val document = app.get(finalUrl ?: return null, headers = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-        "Referer" to mainUrl,
-        "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
-    )).document
+        val document = app.get(finalUrl ?: return null, headers = mapOf(
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Referer" to mainUrl,
+            "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
+        )).document
 
-    val title = document.selectFirst("h1.entry-title")?.text()?.removeBloat() ?: return null
-    val poster = document.selectFirst("div.thumb > img")?.attr("src")?.let { fixUrl(it) }
-    val tags = document.select("div.genre-info > a").map { it.text() }
-    val year = document.selectFirst("div.spe > span:contains(Rilis)")?.ownText()?.let {
-        Regex("\\d{4}").find(it)?.value?.toIntOrNull()
-    }
-    val status = getStatus(document.selectFirst("div.spe > span:contains(Status)")?.ownText() ?: return null)
-    val type = getType(document.selectFirst("div.spe > span:contains(Type)")?.ownText()?.trim()?.lowercase() ?: "tv")
-    val description = document.select("div.desc p").text().trim()
-    val trailer = document.selectFirst("div.trailer-anime iframe")?.attr("src")?.let { fixUrl(it) }
-
-    val episodes = document.select("div.lstepsiode.listeps ul li").mapNotNull { li ->
-        val header = li.selectFirst("span.lchx > a") ?: return@mapNotNull null
-        val epNumber = Regex("Episode\\s?(\\d+)").find(header.text())?.groupValues?.getOrNull(1)?.toIntOrNull()
-        val link = fixUrl(header.attr("href"))
-
-        newEpisode(link) {
-            this.episode = epNumber
-            this.posterUrl = li.selectFirst(".epsright.thumbnailrighteps img")?.attr("src")?.let { fixUrl(it) }
+        val title = document.selectFirst("h1.entry-title")?.text()?.removeBloat() ?: return null
+        val poster = document.selectFirst("div.thumb > img")?.attr("src")?.let { fixUrl(it) }
+        val tags = document.select("div.genre-info > a").map { it.text() }
+        val year = document.selectFirst("div.spe > span:contains(Rilis)")?.ownText()?.let {
+            Regex("\\d{4}").find(it)?.value?.toIntOrNull()
         }
-    }.reversed()
+        val status = getStatus(document.selectFirst("div.spe > span:contains(Status)")?.ownText() ?: return null)
+        val type = getType(document.selectFirst("div.spe > span:contains(Type)")?.ownText()?.trim()?.lowercase() ?: "tv")
+        val description = document.select("div.desc p").text().trim()
+        val trailer = document.selectFirst("div.trailer-anime iframe")?.attr("src")?.let { fixUrl(it) }
 
-    return newAnimeLoadResponse(title, url, type) {
-        engName = title
-        this.posterUrl = poster
-        this.year = year
-        addEpisodes(DubStatus.Subbed, episodes)
-        showStatus = status
-        plot = description
-        addTrailer(trailer)
-        this.tags = tags
+        // Parsing episode list (support thumbnail)
+        val episodes = document.select("div.lstepsiode.listeps ul li").mapNotNull { li ->
+            val header = li.selectFirst("span.lchx > a") ?: return@mapNotNull null
+            val epNumber = Regex("Episode\\s?(\\d+)").find(header.text())?.groupValues?.getOrNull(1)?.toIntOrNull()
+            val link = fixUrl(header.attr("href"))
+            val posterUrl = li.selectFirst(".epsright.thumbnailrighteps img")?.attr("src")?.let { fixUrl(it) }
+
+            newEpisode(link) {
+                this.episode = epNumber
+                this.posterUrl = posterUrl
+            }
+        }.reversed()
+
+        return newAnimeLoadResponse(title, url, type) {
+            engName = title
+            this.posterUrl = poster
+            this.year = year
+            addEpisodes(DubStatus.Subbed, episodes)
+            showStatus = status
+            plot = description
+            addTrailer(trailer)
+            this.tags = tags
+        }
     }
-}
 
     override suspend fun loadLinks(
         data: String,
