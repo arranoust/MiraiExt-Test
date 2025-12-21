@@ -13,13 +13,15 @@ import java.util.Locale
 
 class AnizoneProvider : MainAPI() {
 
-    // ========= METADATA =========
     override var name = "AniZone"
     override var mainUrl = "https://anizone.to"
     override var lang = "en"
-    override var version = 1
 
-    override val supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie)
+    override val supportedTypes = setOf(
+        TvType.Anime,
+        TvType.AnimeMovie
+    )
+
     override val hasMainPage = true
     override val hasQuickSearch = true
     override val hasDownloadSupport = true
@@ -30,69 +32,100 @@ class AnizoneProvider : MainAPI() {
         "6" to "Latest Web"
     )
 
-    // ========= SESSION =========
-    private val session by lazy { LivewireSession(mainUrl) }
+    // ===== Livewire State =====
+    private var cookies = mutableMapOf<String, String>()
+    private var csrfToken = ""
+    private var wireSnapshot = ""
 
-    // ========= MAIN PAGE =========
+    init {
+        val res = Jsoup.connect("$mainUrl/anime")
+            .method(Connection.Method.GET)
+            .execute()
+
+        cookies.putAll(res.cookies())
+        val doc = res.parse()
+
+        csrfToken = doc.select("script[data-csrf]").attr("data-csrf")
+        wireSnapshot = extractSnapshot(doc)
+    }
+
+    // ===== MAIN PAGE =====
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
 
-        val doc = session.requestHtml(
+        val doc = livewireHtml(
             updates = mapOf("type" to request.data),
-            calls = session.loadMoreCall
+            loadMore = true
         )
 
-        val cards = doc.select("div[wire:key]")
+        val items = doc.select("div[wire:key]")
             .let { if (page == 1) it else it.takeLast(12) }
 
         return newHomePageResponse(
             HomePageList(
                 request.name,
-                cards.map(::mapCard),
+                items.map { parseCard(it) },
                 isHorizontalImages = false
             ),
-            hasNext = session.hasMore(doc)
+            hasNext = hasNextPage(doc)
         )
     }
 
-    // ========= SEARCH =========
+    // ===== SEARCH =====
     override suspend fun quickSearch(query: String) = search(query)
 
-    override suspend fun search(query: String): List<SearchResponse> =
-        session.requestHtml(
+    override suspend fun search(query: String): List<SearchResponse> {
+        val doc = livewireHtml(
             updates = mapOf("search" to query),
             remember = false
-        ).select("div[wire:key]")
-            .map(::mapCard)
+        )
+        return doc.select("div[wire:key]").map { parseCard(it) }
+    }
 
-    // ========= LOAD DETAIL =========
+    // ===== LOAD DETAIL =====
     override suspend fun load(url: String): LoadResponse {
-        val res = Jsoup.connect(url).get()
-        val doc = res.parse()
 
-        val localSession = session.fork(doc, res.cookies())
+        var doc = Jsoup.connect(url).get()
 
-        val meta = extractMeta(doc)
+        csrfToken = doc.select("script[data-csrf]").attr("data-csrf")
+        wireSnapshot = extractSnapshot(doc)
 
-        val episodeDoc = localSession.consumeAllPages()
+        val title = doc.selectFirst("h1")!!.text()
+        val poster = doc.selectFirst("main img")?.attr("src")
+        val plot = doc.selectFirst(".sr-only + div")?.text().orEmpty()
 
-        val episodes = episodeDoc
-            .select("li[x-data]")
-            .map(::mapEpisode)
+        val info = doc.select("span.inline-block").map { it.text() }
+        val year = info.getOrNull(3)?.toIntOrNull()
+        val status = when (info.getOrNull(1)) {
+            "Completed" -> ShowStatus.Completed
+            "Ongoing" -> ShowStatus.Ongoing
+            else -> null
+        }
 
-        return newAnimeLoadResponse(meta.title, url, TvType.Anime) {
-            posterUrl = meta.poster
-            plot = meta.plot
-            tags = meta.genres
-            year = meta.year
-            showStatus = meta.status
+        val genres = doc.select("a[wire:navigate][wire:key]").map { it.text() }
+
+        while (hasNextPage(doc)) {
+            doc = livewireHtml(
+                updates = emptyMap(),
+                loadMore = true
+            )
+        }
+
+        val episodes = doc.select("li[x-data]").map { parseEpisode(it) }
+
+        return newAnimeLoadResponse(title, url, TvType.Anime) {
+            posterUrl = poster
+            this.plot = plot
+            tags = genres
+            this.year = year
+            showStatus = status
             addEpisodes(DubStatus.None, episodes)
         }
     }
 
-    // ========= STREAM =========
+    // ===== STREAM =====
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -121,8 +154,8 @@ class AnizoneProvider : MainAPI() {
         return true
     }
 
-    // ========= MAPPERS =========
-    private fun mapCard(el: Element): SearchResponse =
+    // ===== HELPERS =====
+    private fun parseCard(el: Element): SearchResponse =
         newMovieSearchResponse(
             el.selectFirst("img")?.attr("alt") ?: "",
             el.selectFirst("a")?.attr("href") ?: "",
@@ -131,7 +164,7 @@ class AnizoneProvider : MainAPI() {
             posterUrl = el.selectFirst("img")?.attr("src")
         }
 
-    private fun mapEpisode(el: Element) =
+    private fun parseEpisode(el: Element) =
         newEpisode(el.selectFirst("a")?.attr("href") ?: "") {
             name = el.selectFirst("h3")?.text()?.substringAfter(":")?.trim()
             posterUrl = el.selectFirst("img")?.attr("src")
@@ -143,124 +176,58 @@ class AnizoneProvider : MainAPI() {
                 } ?: 0
         }
 
-    // ========= META =========
-    private fun extractMeta(doc: Document): MetaData {
-        val info = doc.select("span.inline-block").map { it.text() }
+    private fun livewireHtml(
+        updates: Map<String, String>,
+        loadMore: Boolean = false,
+        remember: Boolean = true
+    ): Document {
 
-        return MetaData(
-            title = doc.selectFirst("h1")!!.text(),
-            poster = doc.selectFirst("main img")?.attr("src"),
-            plot = doc.selectFirst(".sr-only + div")?.text().orEmpty(),
-            year = info.getOrNull(3)?.toIntOrNull(),
-            status = when (info.getOrNull(1)) {
-                "Completed" -> ShowStatus.Completed
-                "Ongoing" -> ShowStatus.Ongoing
-                else -> null
-            },
-            genres = doc.select("a[wire:navigate][wire:key]").map { it.text() }
-        )
-    }
+        val calls =
+            if (loadMore)
+                listOf(mapOf("path" to "", "method" to "loadMore", "params" to emptyList<String>()))
+            else emptyList()
 
-    // ========= DATA =========
-    private data class MetaData(
-        val title: String,
-        val poster: String?,
-        val plot: String,
-        val year: Int?,
-        val status: ShowStatus?,
-        val genres: List<String>
-    )
-
-    // ========= LIVEWIRE ENGINE =========
-    private class LivewireSession(private val baseUrl: String) {
-
-        private var cookies = mutableMapOf<String, String>()
-        private var token = ""
-        private var snapshot = ""
-
-        val loadMoreCall = listOf(
-            mapOf("path" to "", "method" to "loadMore", "params" to emptyList<String>())
-        )
-
-        init {
-            val res = Jsoup.connect("$baseUrl/anime").get()
-            cookies.putAll(res.cookies())
-            val doc = res.parse()
-            token = doc.select("script[data-csrf]").attr("data-csrf")
-            snapshot = extractSnapshot(doc)
-        }
-
-        fun fork(doc: Document, newCookies: Map<String, String>) =
-            LivewireSession(baseUrl).also {
-                it.cookies = newCookies.toMutableMap()
-                it.token = token
-                it.snapshot = extractSnapshot(doc)
-            }
-
-        fun requestHtml(
-            updates: Map<String, String>,
-            calls: List<Map<String, Any>> = emptyList(),
-            remember: Boolean = true
-        ): Document {
-            val json = post(updates, calls, remember)
-            return Jsoup.parse(
-                json.getJSONArray("components")
-                    .getJSONObject(0)
-                    .getJSONObject("effects")
-                    .getString("html")
-            )
-        }
-
-        fun consumeAllPages(): Document {
-            var doc = requestHtml(emptyMap(), loadMoreCall)
-            while (hasMore(doc)) {
-                doc = requestHtml(emptyMap(), loadMoreCall)
-            }
-            return doc
-        }
-
-        fun hasMore(doc: Document) =
-            doc.selectFirst(".h-12[x-intersect=\"\$wire.loadMore()\"]") != null
-
-        private fun post(
-            updates: Map<String, String>,
-            calls: List<Map<String, Any>>,
-            remember: Boolean
-        ): JSONObject {
-
-            val payload = mapOf(
-                "_token" to token,
-                "components" to listOf(
-                    mapOf(
-                        "snapshot" to snapshot,
-                        "updates" to updates,
-                        "calls" to calls
-                    )
+        val payload = mapOf(
+            "_token" to csrfToken,
+            "components" to listOf(
+                mapOf(
+                    "snapshot" to wireSnapshot,
+                    "updates" to updates,
+                    "calls" to calls
                 )
             )
+        )
 
-            val res = Jsoup.connect("$baseUrl/livewire/update")
-                .method(Connection.Method.POST)
-                .cookies(cookies)
-                .ignoreContentType(true)
-                .header("Content-Type", "application/json")
-                .requestBody(payload.toJson())
-                .execute()
+        val res = Jsoup.connect("$mainUrl/livewire/update")
+            .method(Connection.Method.POST)
+            .cookies(cookies)
+            .ignoreContentType(true)
+            .header("Content-Type", "application/json")
+            .requestBody(payload.toJson())
+            .execute()
 
-            if (remember) {
-                cookies.putAll(res.cookies())
-                snapshot = JSONObject(res.body())
-                    .getJSONArray("components")
-                    .getJSONObject(0)
-                    .getString("snapshot")
-            }
-
-            return JSONObject(res.body())
+        if (remember) {
+            cookies.putAll(res.cookies())
+            wireSnapshot = JSONObject(res.body())
+                .getJSONArray("components")
+                .getJSONObject(0)
+                .getString("snapshot")
         }
 
-        private fun extractSnapshot(doc: Document): String =
-            doc.select("main div[wire:snapshot]")
-                .attr("wire:snapshot")
-                .replace("&quot;", "\"")
+        return Jsoup.parse(
+            JSONObject(res.body())
+                .getJSONArray("components")
+                .getJSONObject(0)
+                .getJSONObject("effects")
+                .getString("html")
+        )
     }
+
+    private fun extractSnapshot(doc: Document): String =
+        doc.select("main div[wire:snapshot]")
+            .attr("wire:snapshot")
+            .replace("&quot;", "\"")
+
+    private fun hasNextPage(doc: Document): Boolean =
+        doc.selectFirst(".h-12[x-intersect=\"\$wire.loadMore()\"]") != null
 }

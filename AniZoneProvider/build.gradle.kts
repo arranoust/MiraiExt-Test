@@ -23,5 +23,5 @@ cloudstream {
         "OVA",
     )
 
-    iconUrl = "https://aghanim.xyz/wp-content/themes/animesail/assets/images/ico.png"
+    iconUrl = "https://s6.imgcdn.dev/YURyNg.png"
 }
