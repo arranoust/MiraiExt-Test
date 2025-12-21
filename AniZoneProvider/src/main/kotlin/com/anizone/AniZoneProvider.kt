@@ -56,10 +56,6 @@ override suspend fun getMainPage(
     request: MainPageRequest
 ): HomePageResponse {
 
-    if (!hasNextPage(doc)) {
-    lastLoadedPage = page
-}
-
     if (page == 1 || page < lastLoadedPage) {
         lastLoadedPage = 1
         livewireHtml(
