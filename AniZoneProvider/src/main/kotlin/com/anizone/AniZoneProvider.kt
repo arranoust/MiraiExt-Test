@@ -49,27 +49,37 @@ class AnizoneProvider : MainAPI() {
     }
 
     // ===== MAIN PAGE =====
+
+    private var lastLoadedPage = 0
 override suspend fun getMainPage(
     page: Int,
     request: MainPageRequest
 ): HomePageResponse {
 
-    if (page == 1) {
+    if (!hasNextPage(doc)) {
+    lastLoadedPage = page
+}
+
+    if (page == 1 || page < lastLoadedPage) {
+        lastLoadedPage = 1
         livewireHtml(
             updates = mapOf(
                 "type" to request.data,
-                "sort" to "release-desc" 
+                "sort" to "release-desc"
             ),
             remember = true
         )
     }
 
-    if (page > 1) {
-        livewireHtml(
-            updates = emptyMap(),
-            loadMore = true,
-            remember = true
-        )
+    if (page > lastLoadedPage) {
+        repeat(page - lastLoadedPage) {
+            livewireHtml(
+                updates = emptyMap(),
+                loadMore = true,
+                remember = true
+            )
+        }
+        lastLoadedPage = page
     }
 
     val doc = livewireHtml(
@@ -93,13 +103,18 @@ override suspend fun getMainPage(
     // ===== SEARCH =====
     override suspend fun quickSearch(query: String) = search(query)
 
-    override suspend fun search(query: String): List<SearchResponse> {
-        val doc = livewireHtml(
-            updates = mapOf("search" to query),
-            remember = false
-        )
-        return doc.select("div[wire:key]").map { parseCard(it) }
-    }
+override suspend fun search(query: String): List<SearchResponse> {
+    if (query.isBlank()) return emptyList()
+
+    lastLoadedPage = 0
+
+    val doc = livewireHtml(
+        updates = mapOf("search" to query),
+        remember = false
+    )
+
+    return doc.select("div[wire:key]").map { parseCard(it) }
+}
 
     // ===== LOAD DETAIL =====
     override suspend fun load(url: String): LoadResponse {
