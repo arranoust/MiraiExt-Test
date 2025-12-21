@@ -29,7 +29,6 @@ class AnizoneProvider : MainAPI() {
     override val mainPage = mainPageOf(
         "2" to "Latest TV Series",
         "4" to "Latest Movies",
-        "6" to "Latest Web"
     )
 
     // ===== Livewire State =====
@@ -50,28 +49,46 @@ class AnizoneProvider : MainAPI() {
     }
 
     // ===== MAIN PAGE =====
-    override suspend fun getMainPage(
-        page: Int,
-        request: MainPageRequest
-    ): HomePageResponse {
+override suspend fun getMainPage(
+    page: Int,
+    request: MainPageRequest
+): HomePageResponse {
 
-        val doc = livewireHtml(
-            updates = mapOf("type" to request.data),
-            loadMore = true
-        )
-
-        val items = doc.select("div[wire:key]")
-            .let { if (page == 1) it else it.takeLast(12) }
-
-        return newHomePageResponse(
-            HomePageList(
-                request.name,
-                items.map { parseCard(it) },
-                isHorizontalImages = false
+    if (page == 1) {
+        livewireHtml(
+            updates = mapOf(
+                "type" to request.data,
+                "sort" to "release-desc" 
             ),
-            hasNext = hasNextPage(doc)
+            remember = true
         )
     }
+
+    if (page > 1) {
+        livewireHtml(
+            updates = emptyMap(),
+            loadMore = true,
+            remember = true
+        )
+    }
+
+    val doc = livewireHtml(
+        updates = emptyMap(),
+        remember = false
+    )
+
+    val items = doc.select("div[wire:key]")
+        .let { if (page == 1) it else it.takeLast(12) }
+
+    return newHomePageResponse(
+        HomePageList(
+            request.name,
+            items.map { parseCard(it) },
+            isHorizontalImages = false
+        ),
+        hasNext = hasNextPage(doc)
+    )
+}
 
     // ===== SEARCH =====
     override suspend fun quickSearch(query: String) = search(query)
