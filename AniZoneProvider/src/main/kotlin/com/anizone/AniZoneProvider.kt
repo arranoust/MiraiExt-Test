@@ -68,14 +68,14 @@ class AnizoneProvider : MainAPI() {
             doc.selectFirst("h1")?.text()
                 ?: throw ErrorLoadingException("Title not found")
 
-        val poster = fixUrlNull(
-            doc.selectFirst("main img")?.attr("src")
-        )
+        val poster =
+            fixUrlNull(doc.selectFirst("main img")?.attr("src"))
 
         val plot =
             doc.selectFirst(".sr-only + div")?.text()
 
-        val info = doc.select("span.inline-block").map { it.text() }
+        val info =
+            doc.select("span.inline-block").map { it.text() }
 
         val year =
             info.firstOrNull { it.matches(Regex("\\d{4}")) }?.toIntOrNull()
@@ -119,7 +119,10 @@ class AnizoneProvider : MainAPI() {
             val src = it.attr("src")
             if (src.isNotBlank()) {
                 subtitleCallback(
-                    SubtitleFile(it.attr("label"), fixUrl(src))
+                    SubtitleFile(
+                        it.attr("label"),
+                        fixUrl(src)
+                    )
                 )
             }
         }
@@ -131,7 +134,7 @@ class AnizoneProvider : MainAPI() {
                 fixUrl(player.attr("src")),
                 "",
                 Qualities.Unknown,
-                ExtractorLinkType.M3U8
+                true // isM3u8
             )
         )
 
@@ -180,11 +183,11 @@ class AnizoneProvider : MainAPI() {
                     }.getOrNull()
                 }
 
-        return Episode(
-            data = fixUrl(a.attr("href")),
-            name = name,
-            date = date,
-            posterUrl = fixUrlNull(el.selectFirst("img")?.attr("src"))
-        )
+        return newEpisode(fixUrl(a.attr("href"))) {
+            this.name = name
+            this.date = date
+            this.posterUrl =
+                fixUrlNull(el.selectFirst("img")?.attr("src"))
+        }
     }
 }
