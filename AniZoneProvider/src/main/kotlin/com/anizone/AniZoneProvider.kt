@@ -49,68 +49,66 @@ class AnizoneProvider : MainAPI() {
     }
 
     // ===== MAIN PAGE =====
+    private var currentPage = 1
 
-    private var lastLoadedPage = 0
-override suspend fun getMainPage(
-    page: Int,
-    request: MainPageRequest
-): HomePageResponse {
+    override suspend fun getMainPage(
+        page: Int,
+        request: MainPageRequest
+    ): HomePageResponse {
 
-    if (page == 1 || page < lastLoadedPage) {
-        lastLoadedPage = 1
-        livewireHtml(
-            updates = mapOf(
-                "type" to request.data,
-                "sort" to "release-desc"
-            ),
-            remember = true
-        )
-    }
-
-    if (page > lastLoadedPage) {
-        repeat(page - lastLoadedPage) {
+        // reset saat halaman pertama
+        if (page == 1) {
+            currentPage = 1
+            livewireHtml(
+                updates = mapOf(
+                    "type" to request.data,
+                    "sort" to "release-desc"
+                ),
+                remember = true
+            )
+        } else {
             livewireHtml(
                 updates = emptyMap(),
                 loadMore = true,
                 remember = true
             )
+            currentPage++
         }
-        lastLoadedPage = page
+
+        val doc = livewireHtml(
+            updates = emptyMap(),
+            remember = true
+        )
+
+        val items = doc.select("div[wire:key]")
+            .map { parseCard(it) }
+
+        return newHomePageResponse(
+            HomePageList(
+                request.name,
+                items,
+                isHorizontalImages = false
+            ),
+            hasNext = items.isNotEmpty()
+        )
     }
-
-    val doc = livewireHtml(
-        updates = emptyMap(),
-        remember = false
-    )
-
-    val items = doc.select("div[wire:key]")
-        .let { if (page == 1) it else it.takeLast(12) }
-
-    return newHomePageResponse(
-        HomePageList(
-            request.name,
-            items.map { parseCard(it) },
-            isHorizontalImages = false
-        ),
-        hasNext = hasNextPage(doc)
-    )
-}
 
     // ===== SEARCH =====
     override suspend fun quickSearch(query: String) = search(query)
 
-override suspend fun search(query: String): List<SearchResponse> {
-    if (query.isBlank()) return emptyList()
+    override suspend fun search(query: String): List<SearchResponse> {
+        if (query.isBlank()) return emptyList()
 
-    lastLoadedPage = 0
+        currentPage = 1
 
-    val doc = livewireHtml(
-        updates = mapOf("search" to query),
-        remember = false
-    )
+        val doc = livewireHtml(
+            updates = mapOf("search" to query),
+            remember = true
+        )
 
-    return doc.select("div[wire:key]").map { parseCard(it) }
-}
+        return doc.select("div[wire:key]")
+            .map { parseCard(it) }
+    }
 
     // ===== LOAD DETAIL =====
     override suspend fun load(url: String): LoadResponse {
@@ -132,16 +130,20 @@ override suspend fun search(query: String): List<SearchResponse> {
             else -> null
         }
 
-        val genres = doc.select("a[wire:navigate][wire:key]").map { it.text() }
+        val genres = doc.select("a[wire:navigate][wire:key]")
+            .map { it.text() }
 
+        // load semua episode (Livewire infinite scroll)
         while (hasNextPage(doc)) {
             doc = livewireHtml(
                 updates = emptyMap(),
-                loadMore = true
+                loadMore = true,
+                remember = true
             )
         }
 
-        val episodes = doc.select("li[x-data]").map { parseEpisode(it) }
+        val episodes = doc.select("li[x-data]")
+            .map { parseEpisode(it) }
 
         return newAnimeLoadResponse(title, url, TvType.Anime) {
             posterUrl = poster
@@ -194,11 +196,16 @@ override suspend fun search(query: String): List<SearchResponse> {
 
     private fun parseEpisode(el: Element) =
         newEpisode(el.selectFirst("a")?.attr("href") ?: "") {
-            name = el.selectFirst("h3")?.text()?.substringAfter(":")?.trim()
+            name = el.selectFirst("h3")
+                ?.text()
+                ?.substringAfter(":")
+                ?.trim()
             posterUrl = el.selectFirst("img")?.attr("src")
             season = 0
             date = el.select("span.line-clamp-1")
-                .getOrNull(1)?.text()?.let {
+                .getOrNull(1)
+                ?.text()
+                ?.let {
                     SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
                         .parse(it)?.time
                 } ?: 0
@@ -212,7 +219,13 @@ override suspend fun search(query: String): List<SearchResponse> {
 
         val calls =
             if (loadMore)
-                listOf(mapOf("path" to "", "method" to "loadMore", "params" to emptyList<String>()))
+                listOf(
+                    mapOf(
+                        "path" to "",
+                        "method" to "loadMore",
+                        "params" to emptyList<String>()
+                    )
+                )
             else emptyList()
 
         val payload = mapOf(
