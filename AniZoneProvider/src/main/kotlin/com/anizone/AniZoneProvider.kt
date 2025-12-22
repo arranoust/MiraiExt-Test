@@ -2,6 +2,7 @@ package com.anizone
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -12,46 +13,55 @@ class AnizoneProvider : MainAPI() {
     override var mainUrl = "https://anizone.to"
     override var lang = "en"
 
-    override val supportedTypes = setOf(TvType.Anime)
+    override val supportedTypes = setOf(
+        TvType.Anime,
+        TvType.AnimeMovie
+    )
 
     override val hasMainPage = true
     override val hasQuickSearch = true
     override val hasDownloadSupport = true
 
     override val mainPage = mainPageOf(
-        "" to "Anime List"
+        "2" to "Latest TV Series",
+        "4" to "Latest Movies"
     )
 
     // =========================
-    // MAIN PAGE
+    // MAIN PAGE (STATIC)
     // =========================
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
 
-        val doc = app.get("$mainUrl/anime?page=$page").document
+        val url = "$mainUrl/anime?type=${request.data}&page=$page"
+        val doc = Jsoup.connect(url).get()
 
         val items = doc.select("div.bg-slate-900.rounded-lg")
             .mapNotNull { parseCard(it) }
 
         return newHomePageResponse(
-            HomePageList(request.name, items),
+            HomePageList(
+                request.name,
+                items,
+                isHorizontalImages = false
+            ),
+            // selama masih ada item, lanjut scroll
             hasNext = items.isNotEmpty()
         )
     }
 
     // =========================
-    // SEARCH
+    // SEARCH (STATIC)
     // =========================
     override suspend fun quickSearch(query: String) = search(query)
 
     override suspend fun search(query: String): List<SearchResponse> {
         if (query.isBlank()) return emptyList()
 
-        val doc = app.get(
-            "$mainUrl/search?query=${java.net.URLEncoder.encode(query, "UTF-8")}"
-        ).document
+        val url = "$mainUrl/search?query=${java.net.URLEncoder.encode(query, "UTF-8")}"
+        val doc = Jsoup.connect(url).get()
 
         return doc.select("div.bg-slate-900.rounded-lg")
             .mapNotNull { parseCard(it) }
@@ -62,23 +72,17 @@ class AnizoneProvider : MainAPI() {
     // =========================
     override suspend fun load(url: String): LoadResponse {
 
-        val doc = app.get(url).document
+        val doc = Jsoup.connect(url).get()
 
         val title =
             doc.selectFirst("h1")?.text()
                 ?: throw ErrorLoadingException("Title not found")
 
-        val poster =
-            fixUrlNull(doc.selectFirst("main img")?.attr("src"))
+        val poster = doc.selectFirst("main img")?.attr("src")
+        val plot = doc.selectFirst(".sr-only + div")?.text().orEmpty()
 
-        val plot =
-            doc.selectFirst(".sr-only + div")?.text()
-
-        val info =
-            doc.select("span.inline-block").map { it.text() }
-
-        val year =
-            info.firstOrNull { it.matches(Regex("\\d{4}")) }?.toIntOrNull()
+        val info = doc.select("span.inline-block").map { it.text() }
+        val year = info.firstOrNull { it.matches(Regex("\\d{4}")) }?.toIntOrNull()
 
         val status = when {
             info.any { it.equals("Completed", true) } -> ShowStatus.Completed
@@ -86,11 +90,11 @@ class AnizoneProvider : MainAPI() {
             else -> null
         }
 
-        val genres =
-            doc.select("a[href*=\"/tag/\"]").map { it.text() }
+        val genres = doc.select("a[href*=\"/tag/\"]")
+            .map { it.text() }
 
-        val episodes =
-            doc.select("li[x-data]").mapNotNull { parseEpisode(it) }
+        val episodes = doc.select("li[x-data]")
+            .mapNotNull { parseEpisode(it) }
 
         return newAnimeLoadResponse(title, url, TvType.Anime) {
             posterUrl = poster
@@ -116,25 +120,20 @@ class AnizoneProvider : MainAPI() {
         val player = doc.selectFirst("media-player") ?: return false
 
         player.select("track").forEach {
-            val src = it.attr("src")
-            if (src.isNotBlank()) {
-                subtitleCallback(
-                    SubtitleFile(
-                        it.attr("label"),
-                        fixUrl(src)
-                    )
+            subtitleCallback(
+                newSubtitleFile(
+                    it.attr("label"),
+                    it.attr("src")
                 )
-            }
+            )
         }
 
         callback(
-            ExtractorLink(
+            newExtractorLink(
                 name,
                 name,
-                fixUrl(player.attr("src")),
-                "",
-                Qualities.Unknown,
-                true // isM3u8
+                player.attr("src"),
+                type = ExtractorLinkType.M3U8
             )
         )
 
@@ -153,41 +152,31 @@ class AnizoneProvider : MainAPI() {
                 ?.ifBlank { link.attr("title") }
                 ?: return null
 
-        return newAnimeSearchResponse(
+        return newMovieSearchResponse(
             title,
-            fixUrl(link.attr("href"))
+            link.attr("href"),
+            TvType.Anime
         ) {
-            posterUrl = fixUrlNull(img?.attr("src"))
+            posterUrl = img?.attr("src")
         }
     }
 
     private fun parseEpisode(el: Element): Episode? {
         val a = el.selectFirst("a") ?: return null
+        val name = el.selectFirst("h3")?.text()?.substringAfter(":")?.trim()
 
-        val name =
-            el.selectFirst("h3")
-                ?.text()
-                ?.substringAfter(":")
-                ?.trim()
+        val date = el.select("span.line-clamp-1")
+            .getOrNull(1)
+            ?.text()
+            ?.let {
+                SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                    .parse(it)?.time
+            } ?: 0
 
-        val date =
-            el.select("span.line-clamp-1")
-                .getOrNull(1)
-                ?.text()
-                ?.let {
-                    runCatching {
-                        SimpleDateFormat(
-                            "yyyy-MM-dd",
-                            Locale.getDefault()
-                        ).parse(it)?.time
-                    }.getOrNull()
-                }
-
-        return newEpisode(fixUrl(a.attr("href"))) {
+        return newEpisode(a.attr("href")) {
             this.name = name
             this.date = date
-            this.posterUrl =
-                fixUrlNull(el.selectFirst("img")?.attr("src"))
+            posterUrl = el.selectFirst("img")?.attr("src")
         }
     }
 }
