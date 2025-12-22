@@ -23,25 +23,20 @@ class AnizoneProvider : MainAPI() {
     )
 
     // =========================
-    // MAIN PAGE (STATIC)
+    // MAIN PAGE
     // =========================
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
 
-        val url = "$mainUrl/anime?page=$page"
-        val doc = app.get(url).document
+        val doc = app.get("$mainUrl/anime?page=$page").document
 
         val items = doc.select("div.bg-slate-900.rounded-lg")
             .mapNotNull { parseCard(it) }
 
         return newHomePageResponse(
-            HomePageList(
-                request.name,
-                items,
-                isHorizontalImages = false
-            ),
+            HomePageList(request.name, items),
             hasNext = items.isNotEmpty()
         )
     }
@@ -54,9 +49,9 @@ class AnizoneProvider : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         if (query.isBlank()) return emptyList()
 
-        val url =
+        val doc = app.get(
             "$mainUrl/search?query=${java.net.URLEncoder.encode(query, "UTF-8")}"
-        val doc = app.get(url).document
+        ).document
 
         return doc.select("div.bg-slate-900.rounded-lg")
             .mapNotNull { parseCard(it) }
@@ -73,14 +68,14 @@ class AnizoneProvider : MainAPI() {
             doc.selectFirst("h1")?.text()
                 ?: throw ErrorLoadingException("Title not found")
 
-        val poster =
-            doc.selectFirst("main img")?.attr("src")?.fixUrl(mainUrl)
+        val poster = fixUrlNull(
+            doc.selectFirst("main img")?.attr("src")
+        )
 
         val plot =
-            doc.selectFirst(".sr-only + div")?.text().orEmpty()
+            doc.selectFirst(".sr-only + div")?.text()
 
-        val info =
-            doc.select("span.inline-block").map { it.text() }
+        val info = doc.select("span.inline-block").map { it.text() }
 
         val year =
             info.firstOrNull { it.matches(Regex("\\d{4}")) }?.toIntOrNull()
@@ -124,20 +119,19 @@ class AnizoneProvider : MainAPI() {
             val src = it.attr("src")
             if (src.isNotBlank()) {
                 subtitleCallback(
-                    newSubtitleFile(
-                        it.attr("label"),
-                        src.fixUrl(mainUrl)
-                    )
+                    SubtitleFile(it.attr("label"), fixUrl(src))
                 )
             }
         }
 
         callback(
-            newExtractorLink(
+            ExtractorLink(
                 name,
                 name,
-                player.attr("src").fixUrl(mainUrl),
-                type = ExtractorLinkType.M3U8
+                fixUrl(player.attr("src")),
+                "",
+                Qualities.Unknown,
+                ExtractorLinkType.M3U8
             )
         )
 
@@ -158,9 +152,9 @@ class AnizoneProvider : MainAPI() {
 
         return newAnimeSearchResponse(
             title,
-            link.attr("href").fixUrl(mainUrl)
+            fixUrl(link.attr("href"))
         ) {
-            posterUrl = img?.attr("src")?.fixUrl(mainUrl)
+            posterUrl = fixUrlNull(img?.attr("src"))
         }
     }
 
@@ -184,13 +178,13 @@ class AnizoneProvider : MainAPI() {
                             Locale.getDefault()
                         ).parse(it)?.time
                     }.getOrNull()
-                } ?: 0L
+                }
 
-        return newEpisode(a.attr("href").fixUrl(mainUrl)) {
-            this.name = name
-            this.date = date
-            posterUrl =
-                el.selectFirst("img")?.attr("src")?.fixUrl(mainUrl)
-        }
+        return Episode(
+            data = fixUrl(a.attr("href")),
+            name = name,
+            date = date,
+            posterUrl = fixUrlNull(el.selectFirst("img")?.attr("src"))
+        )
     }
 }
