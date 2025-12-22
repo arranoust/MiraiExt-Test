@@ -2,9 +2,7 @@ package com.anizone
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
-import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -14,22 +12,18 @@ class AnizoneProvider : MainAPI() {
     override var mainUrl = "https://anizone.to"
     override var lang = "en"
 
-    override val supportedTypes = setOf(
-        TvType.Anime,
-        TvType.AnimeMovie
-    )
+    override val supportedTypes = setOf(TvType.Anime)
 
     override val hasMainPage = true
     override val hasQuickSearch = true
     override val hasDownloadSupport = true
-    
+
     override val mainPage = mainPageOf(
-        "tv" to "Latest TV Series",
-        "movie" to "Latest Movies"
+        "" to "Anime List"
     )
 
     // =========================
-    // MAIN PAGE 
+    // MAIN PAGE (STATIC)
     // =========================
     override suspend fun getMainPage(
         page: Int,
@@ -37,10 +31,10 @@ class AnizoneProvider : MainAPI() {
     ): HomePageResponse {
 
         val url = "$mainUrl/anime?page=$page"
-        val doc = Jsoup.connect(url).get()
+        val doc = app.get(url).document
 
         val items = doc.select("div.bg-slate-900.rounded-lg")
-            .mapNotNull { parseCard(it, request.data) }
+            .mapNotNull { parseCard(it) }
 
         return newHomePageResponse(
             HomePageList(
@@ -60,11 +54,12 @@ class AnizoneProvider : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         if (query.isBlank()) return emptyList()
 
-        val url = "$mainUrl/search?query=${URLEncoder.encode(query, "UTF-8")}"
-        val doc = Jsoup.connect(url).get()
+        val url =
+            "$mainUrl/search?query=${java.net.URLEncoder.encode(query, "UTF-8")}"
+        val doc = app.get(url).document
 
         return doc.select("div.bg-slate-900.rounded-lg")
-            .mapNotNull { parseCard(it, null) }
+            .mapNotNull { parseCard(it) }
     }
 
     // =========================
@@ -72,17 +67,23 @@ class AnizoneProvider : MainAPI() {
     // =========================
     override suspend fun load(url: String): LoadResponse {
 
-        val doc = Jsoup.connect(url).get()
+        val doc = app.get(url).document
 
-        val title = doc.selectFirst("h1")?.text()
-            ?: throw ErrorLoadingException("Title not found")
+        val title =
+            doc.selectFirst("h1")?.text()
+                ?: throw ErrorLoadingException("Title not found")
 
-        val poster = doc.selectFirst("main img")?.attr("src")
-        val plot = doc.selectFirst(".sr-only + div")?.text().orEmpty()
+        val poster =
+            doc.selectFirst("main img")?.attr("src")?.fixUrl(mainUrl)
 
-        val info = doc.select("span.inline-block").map { it.text() }
+        val plot =
+            doc.selectFirst(".sr-only + div")?.text().orEmpty()
 
-        val year = info.firstOrNull { it.matches(Regex("\\d{4}")) }?.toIntOrNull()
+        val info =
+            doc.select("span.inline-block").map { it.text() }
+
+        val year =
+            info.firstOrNull { it.matches(Regex("\\d{4}")) }?.toIntOrNull()
 
         val status = when {
             info.any { it.equals("Completed", true) } -> ShowStatus.Completed
@@ -90,11 +91,11 @@ class AnizoneProvider : MainAPI() {
             else -> null
         }
 
-        val genres = doc.select("a[href*=\"/tag/\"]")
-            .map { it.text() }
+        val genres =
+            doc.select("a[href*=\"/tag/\"]").map { it.text() }
 
-        val episodes = doc.select("li[x-data]")
-            .mapNotNull { parseEpisode(it) }
+        val episodes =
+            doc.select("li[x-data]").mapNotNull { parseEpisode(it) }
 
         return newAnimeLoadResponse(title, url, TvType.Anime) {
             posterUrl = poster
@@ -120,19 +121,22 @@ class AnizoneProvider : MainAPI() {
         val player = doc.selectFirst("media-player") ?: return false
 
         player.select("track").forEach {
-            subtitleCallback(
-                newSubtitleFile(
-                    it.attr("label"),
-                    it.attr("src")
+            val src = it.attr("src")
+            if (src.isNotBlank()) {
+                subtitleCallback(
+                    newSubtitleFile(
+                        it.attr("label"),
+                        src.fixUrl(mainUrl)
+                    )
                 )
-            )
+            }
         }
 
         callback(
             newExtractorLink(
                 name,
                 name,
-                player.attr("src"),
+                player.attr("src").fixUrl(mainUrl),
                 type = ExtractorLinkType.M3U8
             )
         )
@@ -143,66 +147,50 @@ class AnizoneProvider : MainAPI() {
     // =========================
     // HELPERS
     // =========================
-
-    /**
-     * @param filter "tv", "movie", atau null (untuk search)
-     */
-    private fun parseCard(el: Element, filter: String?): SearchResponse? {
-
+    private fun parseCard(el: Element): SearchResponse? {
         val link = el.selectFirst("a[href*=\"/anime/\"]") ?: return null
-        val img = el.selectFirst("img") ?: return null
+        val img = el.selectFirst("img")
 
-        val title = img.attr("alt").ifBlank {
-            link.attr("title")
-        }
-        if (title.isBlank()) return null
+        val title =
+            img?.attr("alt")
+                ?.ifBlank { link.attr("title") }
+                ?: return null
 
-        // ambil teks tipe (TV Series / Movie)
-        val typeText = el.select(".text-xs span")
-            .firstOrNull()
-            ?.text()
-            ?.lowercase()
-
-        val isMovie = typeText?.contains("movie") == true
-        val isTv = typeText?.contains("tv") == true
-
-        // filter homepage
-        when (filter) {
-            "tv" -> if (!isTv) return null
-            "movie" -> if (!isMovie) return null
-        }
-
-        val tvType = if (isMovie) TvType.AnimeMovie else TvType.Anime
-
-        return newMovieSearchResponse(
+        return newAnimeSearchResponse(
             title,
-            link.attr("href"),
-            tvType
+            link.attr("href").fixUrl(mainUrl)
         ) {
-            posterUrl = img.attr("src")
+            posterUrl = img?.attr("src")?.fixUrl(mainUrl)
         }
     }
 
     private fun parseEpisode(el: Element): Episode? {
         val a = el.selectFirst("a") ?: return null
 
-        val name = el.selectFirst("h3")
-            ?.text()
-            ?.substringAfter(":")
-            ?.trim()
+        val name =
+            el.selectFirst("h3")
+                ?.text()
+                ?.substringAfter(":")
+                ?.trim()
 
-        val date = el.select("span.line-clamp-1")
-            .getOrNull(1)
-            ?.text()
-            ?.let {
-                SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                    .parse(it)?.time
-            } ?: 0
+        val date =
+            el.select("span.line-clamp-1")
+                .getOrNull(1)
+                ?.text()
+                ?.let {
+                    runCatching {
+                        SimpleDateFormat(
+                            "yyyy-MM-dd",
+                            Locale.getDefault()
+                        ).parse(it)?.time
+                    }.getOrNull()
+                } ?: 0L
 
-        return newEpisode(a.attr("href")) {
+        return newEpisode(a.attr("href").fixUrl(mainUrl)) {
             this.name = name
             this.date = date
-            posterUrl = el.selectFirst("img")?.attr("src")
+            posterUrl =
+                el.selectFirst("img")?.attr("src")?.fixUrl(mainUrl)
         }
     }
 }
