@@ -23,5 +23,5 @@ cloudstream {
         "OVA",
     )
 
-    iconUrl = "https://s6.imgcdn.dev/YURyNg.png"
+    iconUrl = "https://kohiden.xyz/Kohi-den/extensions/raw/branch/main/icon/eu.kanade.tachiyomi.animeextension.all.anizone.png"
 }
