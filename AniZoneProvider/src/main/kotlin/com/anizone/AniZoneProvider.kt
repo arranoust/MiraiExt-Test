@@ -55,8 +55,6 @@ class AnizoneProvider : MainAPI() {
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
-
-        // reset saat halaman pertama
         if (page == 1) {
             currentPage = 1
             livewireHtml(
@@ -89,7 +87,7 @@ class AnizoneProvider : MainAPI() {
                 items,
                 isHorizontalImages = false
             ),
-            hasNext = items.isNotEmpty()
+            hasNext = true
         )
     }
 
