@@ -28,23 +28,15 @@ class AnizoneProvider : MainAPI() {
     // =========================
     // MAIN PAGE
     // =========================
-    override suspend fun getMainPage(
-        page: Int,
-        request: MainPageRequest
-    ): HomePageResponse {
-
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val doc = runCatching { app.get("$mainUrl/anime?page=$page").document }.getOrNull()
             ?: return newHomePageResponse(HomePageList(request.name, emptyList()), hasNext = false)
 
-        val items = doc.select("div.relative.overflow-hidden.h-26.rounded-lg") // stable card wrapper
+        val items = doc.select("div.relative.overflow-hidden.h-26.rounded-lg")
             .mapNotNull { parseAnimeCard(it) }
 
         return newHomePageResponse(
-            HomePageList(
-                "Anime List",
-                items,
-                isHorizontalImages = false
-            ),
+            HomePageList("Anime List", items, isHorizontalImages = false),
             hasNext = items.isNotEmpty()
         )
     }
@@ -60,7 +52,7 @@ class AnizoneProvider : MainAPI() {
         val url = "$mainUrl/search?query=${java.net.URLEncoder.encode(query, "UTF-8")}"
         val doc = runCatching { app.get(url).document }.getOrNull() ?: return emptyList()
 
-        return doc.select("div.relative.overflow-hidden.h-26.rounded-lg")
+        return doc.select("div.relative.flex.flex-col.gap-2")
             .mapNotNull { parseAnimeCard(it) }
     }
 
@@ -130,14 +122,19 @@ class AnizoneProvider : MainAPI() {
     // =========================
     private fun parseAnimeCard(el: Element): SearchResponse? {
         val a = el.selectFirst("a[href*=\"/anime/\"]") ?: return null
-        val img = el.selectFirst("img") ?: return null
 
-        val title = img.attr("alt").replace("&quot;", "\"").ifBlank { return null }
+        val title = a.text().trim()
+        if (title.isBlank()) return null
+
+        // cari poster: img pertama di parent/child
+        val img = el.selectFirst("img")
+        val poster = img?.attr("src")
+
         val href = a.attr("href")
         val url = if (href.startsWith("http")) href else "$mainUrl$href"
 
         return newMovieSearchResponse(title, url, TvType.Anime) {
-            posterUrl = img.attr("src")
+            posterUrl = poster
         }
     }
 
