@@ -9,6 +9,7 @@ import com.lagradost.nicehttp.NiceResponse
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import java.util.Base64
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import kotlin.text.Regex
@@ -175,12 +176,17 @@ override suspend fun loadLinks(
 
     for (option in mirrors) {
         try {
-            val decoded = base64DecodeString(option.attr("data-em"))
-            val iframeUrl = Jsoup.parse(decoded)
-                .selectFirst("iframe")
-                ?.attr("src")
-                ?.let { fixUrl(it) }
+            // decode base64 (NON-suspend, aman)
+            val decoded = String(
+                Base64.getDecoder().decode(option.attr("data-em"))
+            )
+
+            val iframe = Jsoup.parse(decoded)
+                .select("iframe")
+                .first()
                 ?: continue
+
+            val iframeUrl = fixUrl(iframe.attr("src"))
 
             val rawText = option.text().trim()
             val quality = getIndexQuality(rawText)
@@ -208,7 +214,7 @@ override suspend fun loadLinks(
                 )
             }
 
-        } catch (e: Throwable) {
+        } catch (_: Throwable) {
             continue
         }
     }
