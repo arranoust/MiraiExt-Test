@@ -163,55 +163,58 @@ class AnimeSail : MainAPI() {
     }
 
     // ================= Load Extractor Links =================
-    override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
+override suspend fun loadLinks(
+    data: String,
+    isCasting: Boolean,
+    subtitleCallback: (SubtitleFile) -> Unit,
+    callback: (ExtractorLink) -> Unit
+): Boolean {
 
-        val document = request(data).document
-        val mirrors = document.select(".mobius > .mirror > option")
+    val document = request(data).document
+    val mirrors = document.select(".mobius > .mirror > option")
 
-        for (option in mirrors) {
-            runCatching {
+    for (option in mirrors) {
+        try {
+            val decoded = base64Decode(option.attr("data-em"))
+            val iframeUrl = Jsoup.parse(decoded)
+                .selectFirst("iframe")
+                ?.attr("src")
+                ?.let { fixUrl(it) }
+                ?: continue
 
-                val decoded = base64Decode(option.attr("data-em"))
-                val iframeUrl = Jsoup.parse(decoded)
-                    .selectFirst("iframe")
-                    ?.attr("src")
-                    ?.let { fixUrl(it) }
-                    ?: return@runCatching
+            val rawText = option.text().trim()
+            val quality = getIndexQuality(rawText)
 
-                val rawText = option.text().trim()
-                val quality = getIndexQuality(rawText)
+            val mirrorName = rawText
+                .replace(Regex("\\d{3,4}p", RegexOption.IGNORE_CASE), "")
+                .replace("-", "")
+                .trim()
+                .lowercase()
+                .replaceFirstChar { it.uppercase() }
 
-                val mirrorName = rawText
-                    .replace(Regex("\\d{3,4}p", RegexOption.IGNORE_CASE), "")
-                    .replace("-", "")
-                    .trim()
-                    .lowercase()
-                    .replaceFirstChar { it.uppercase() }
-
-                loadExtractor(iframeUrl, data, subtitleCallback) { link ->
-                    callback(
-                        newExtractorLink(
-                            source = mirrorName,
-                            name = "$mirrorName ${quality}p",
-                            url = link.url,
-                            type = link.type
-                        ) {
-                            this.quality = quality
-                            this.referer = link.referer
-                            this.headers = link.headers
-                            this.extractorData = link.extractorData
-                        }
-                    )
-                }
+            loadExtractor(iframeUrl, data, subtitleCallback) { link ->
+                callback(
+                    newExtractorLink(
+                        source = mirrorName,
+                        name = "$mirrorName ${quality}p",
+                        url = link.url,
+                        type = link.type
+                    ) {
+                        this.quality = quality
+                        this.referer = link.referer
+                        this.headers = link.headers
+                        this.extractorData = link.extractorData
+                    }
+                )
             }
+
+        } catch (e: Throwable) {
+            continue
         }
-        return true
     }
+
+    return true
+}
 
     // ================= Quality Helper =================
     private fun getIndexQuality(str: String?): Int {
