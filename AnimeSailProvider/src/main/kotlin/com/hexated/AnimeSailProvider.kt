@@ -170,7 +170,7 @@ override suspend fun loadLinks(
     callback: (ExtractorLink) -> Unit
 ): Boolean {
 
-    val document = request(data).document
+    val document = app.get(data).document
     val mirrors = document.select(".mobius > .mirror > option")
 
     for (option in mirrors) {
