@@ -13,7 +13,7 @@ buildscript {
     dependencies {
         classpath("com.android.tools.build:gradle:8.7.3")
         classpath("com.github.recloudstream:gradle:master-SNAPSHOT")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.3.0")
     }
 }
 
@@ -36,7 +36,7 @@ subprojects {
 
     cloudstream {
         setRepo(System.getenv("GITHUB_REPOSITORY") ?: "https://github.com/arranoust/MiraiExt")
-        authors = listOf("Mohirufy")
+        authors = listOf("Arranoust")
     }
 
     android {
