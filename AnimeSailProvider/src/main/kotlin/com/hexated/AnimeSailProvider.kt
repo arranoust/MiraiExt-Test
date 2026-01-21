@@ -171,43 +171,45 @@ class AnimeSail : MainAPI() {
     ): Boolean {
 
         val document = request(data).document
+        val mirrors = document.select(".mobius > .mirror > option")
 
-        for (option in document.select(".mobius > .mirror > option")) {
-            try {
-                val iframe = fixUrl(
-                    Jsoup.parse(base64Decode(option.attr("data-em")))
-                        .select("iframe")
-                        .attr("src")
-                )
+        for (option in mirrors) {
+            runCatching {
 
-                val quality = getIndexQuality(option.text())
+                val decoded = base64Decode(option.attr("data-em"))
+                val iframeUrl = Jsoup.parse(decoded)
+                    .selectFirst("iframe")
+                    ?.attr("src")
+                    ?.let { fixUrl(it) }
+                    ?: return@runCatching
 
-                loadExtractor(iframe, data, subtitleCallback) { link ->
-                    kotlinx.coroutines.runBlocking {
-                        callback(
-                            newExtractorLink(
-                                source = name,
-                                name = name,
-                                url = link.url,
-                                type = link.type
-                            ) {
-                                this.referer = link.referer
-                                this.quality = quality
-                                if (link.headers.isNotEmpty()) {
-                                    this.headers = link.headers
-                                }
-                                if (link.extractorData != null) {
-                                    this.extractorData = link.extractorData
-                                }
-                            }
-                        )
-                    }
+                val rawText = option.text().trim()
+                val quality = getIndexQuality(rawText)
+
+                val mirrorName = rawText
+                    .replace(Regex("\\d{3,4}p", RegexOption.IGNORE_CASE), "")
+                    .replace("-", "")
+                    .trim()
+                    .lowercase()
+                    .replaceFirstChar { it.uppercase() }
+
+                loadExtractor(iframeUrl, data, subtitleCallback) { link ->
+                    callback(
+                        newExtractorLink(
+                            source = mirrorName,
+                            name = "$mirrorName ${quality}p",
+                            url = link.url,
+                            type = link.type
+                        ) {
+                            this.quality = quality
+                            this.referer = link.referer
+                            this.headers = link.headers
+                            this.extractorData = link.extractorData
+                        }
+                    )
                 }
-            } catch (_: Throwable) {
-                // Ignore errors per item
             }
         }
-
         return true
     }
 
