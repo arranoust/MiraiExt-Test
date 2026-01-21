@@ -176,7 +176,6 @@ override suspend fun loadLinks(
 
     for (option in mirrors) {
         try {
-            // decode base64 (NON-suspend, aman)
             val decoded = String(
                 Base64.getDecoder().decode(option.attr("data-em"))
             )
@@ -195,22 +194,18 @@ override suspend fun loadLinks(
                 .replace(Regex("\\d{3,4}p", RegexOption.IGNORE_CASE), "")
                 .replace("-", "")
                 .trim()
-                .lowercase()
-                .replaceFirstChar { it.uppercase() }
 
-            loadExtractor(iframeUrl, data, subtitleCallback) { link ->
+            loadExtractor(
+                iframeUrl,
+                data,
+                subtitleCallback
+            ) { link ->
                 callback(
-                    newExtractorLink(
+                    link.copy(
                         source = mirrorName,
                         name = "$mirrorName ${quality}p",
-                        url = link.url,
-                        type = link.type
-                    ) {
-                        this.quality = quality
-                        this.referer = link.referer
-                        this.headers = link.headers
-                        this.extractorData = link.extractorData
-                    }
+                        quality = quality
+                    )
                 )
             }
 
