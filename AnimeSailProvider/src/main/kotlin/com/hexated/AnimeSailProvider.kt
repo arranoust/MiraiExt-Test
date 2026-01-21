@@ -175,7 +175,7 @@ override suspend fun loadLinks(
 
     for (option in mirrors) {
         try {
-            val decoded = base64Decode(option.attr("data-em"))
+            val decoded = base64DecodeString(option.attr("data-em"))
             val iframeUrl = Jsoup.parse(decoded)
                 .selectFirst("iframe")
                 ?.attr("src")
