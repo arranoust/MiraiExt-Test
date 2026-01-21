@@ -177,7 +177,7 @@ override suspend fun loadLinks(
     for (option in mirrors) {
         try {
             val decoded = String(
-                Base64.getDecoder().decode(option.attr("data-em"))
+                java.util.Base64.getDecoder().decode(option.attr("data-em"))
             )
 
             val iframe = Jsoup.parse(decoded)
@@ -200,13 +200,12 @@ override suspend fun loadLinks(
                 data,
                 subtitleCallback
             ) { link ->
-                callback(
-                    link.copy(
-                        source = mirrorName,
-                        name = "$mirrorName ${quality}p",
-                        quality = quality
-                    )
-                )
+
+                link.source = mirrorName
+                link.name = "$mirrorName ${quality}p"
+                link.quality = quality
+
+                callback(link)
             }
 
         } catch (_: Throwable) {
