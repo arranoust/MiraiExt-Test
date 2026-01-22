@@ -202,18 +202,18 @@ override suspend fun loadLinks(
 ) { link ->
 
     callback(
-        ExtractorLink(
+        newExtractorLink(
             source = mirrorName,
-            name = "$mirrorName ${quality}p",
+            name = mirrorName,
             url = link.url,
             referer = link.referer,
             quality = quality,
             isM3u8 = link.isM3u8,
-            headers = link.headers
+            headers = link.headers,
+            extractorData = link.extractorData
         )
     )
 }
-
 
         } catch (_: Throwable) {
             continue
