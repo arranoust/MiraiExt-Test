@@ -68,7 +68,7 @@ class AnimeSail : MainAPI() {
         "$mainUrl/page/" to "Episode Terbaru",
         "$mainUrl/rilisan-anime-terbaru/page/" to "Anime Terbaru",
         "$mainUrl/rilisan-donghua-terbaru/page/" to "Donghua Terbaru",
-        "$mainUrl/movie-terbaru/page/" to "Movie Terbaru"
+        "$mainUrl/movie-terbaru/page/" to "Movie Terbaru",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
