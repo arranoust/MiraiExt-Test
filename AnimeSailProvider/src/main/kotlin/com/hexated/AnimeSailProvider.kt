@@ -29,7 +29,6 @@ class AnimeSail : MainAPI() {
         TvType.OVA
     )
 
-    // Companion object: type/status helpers
     companion object {
         fun getType(t: String): TvType {
             return when {
@@ -48,7 +47,6 @@ class AnimeSail : MainAPI() {
         }
     }
 
-    // HTTP request helper
     private suspend fun request(url: String, ref: String? = null): NiceResponse {
         return app.get(
             url,
@@ -164,64 +162,58 @@ class AnimeSail : MainAPI() {
     }
 
     // ================= Load Extractor Links =================
-override suspend fun loadLinks(
-    data: String,
-    isCasting: Boolean,
-    subtitleCallback: (SubtitleFile) -> Unit,
-    callback: (ExtractorLink) -> Unit
-): Boolean {
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
 
-    val document = app.get(data).document
-    val mirrors = document.select(".mobius > .mirror > option")
+        val document = app.get(data).document
+        val mirrors = document.select(".mobius > .mirror > option")
 
-    for (option in mirrors) {
-        try {
-            val decoded = String(
-                java.util.Base64.getDecoder().decode(option.attr("data-em"))
-            )
+        for (option in mirrors) {
+            try {
+                val decoded = String(
+                    Base64.getDecoder().decode(option.attr("data-em"))
+                )
 
-            val iframe = Jsoup.parse(decoded)
-                .select("iframe")
-                .first()
-                ?: continue
+                val iframe = Jsoup.parse(decoded)
+                    .select("iframe")
+                    .first()
+                    ?: continue
 
-            val iframeUrl = fixUrl(iframe.attr("src"))
+                val iframeUrl = fixUrl(iframe.attr("src"))
 
-            val rawText = option.text().trim()
-            val quality = getIndexQuality(rawText)
+                val rawText = option.text().trim()
+                val quality = getIndexQuality(rawText)
 
-            val mirrorName = rawText
-                .replace(Regex("\\d{3,4}p", RegexOption.IGNORE_CASE), "")
-                .replace("-", "")
-                .trim()
+                val mirrorName = rawText
+                    .replace(Regex("\\d{3,4}p", RegexOption.IGNORE_CASE), "")
+                    .replace("-", "")
+                    .trim()
 
-            loadExtractor(
-    iframeUrl,
-    data,
-    subtitleCallback
-) { link ->
+                loadExtractor(
+                    iframeUrl,
+                    data,
+                    subtitleCallback
+                ) { link ->
+                    callback(
+                        link.copy(
+                            source = mirrorName,
+                            name = mirrorName,
+                            quality = quality
+                        )
+                    )
+                }
 
-    callback(
-        newExtractorLink(
-            source = mirrorName,
-            name = mirrorName,
-            url = link.url,
-            referer = link.referer,
-            quality = quality,
-            isM3u8 = link.isM3u8,
-            headers = link.headers,
-            extractorData = link.extractorData
-        )
-    )
-}
-
-        } catch (_: Throwable) {
-            continue
+            } catch (_: Throwable) {
+                continue
+            }
         }
-    }
 
-    return true
-}
+        return true
+    }
 
     // ================= Quality Helper =================
     private fun getIndexQuality(str: String?): Int {
