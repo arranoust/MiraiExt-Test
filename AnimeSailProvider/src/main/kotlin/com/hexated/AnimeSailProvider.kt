@@ -161,59 +161,45 @@ class AnimeSail : MainAPI() {
         }
     }
 
-    // ================= Load Extractor Links =================
-    override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
+// ================= Load Extractor Links =================
+override suspend fun loadLinks(
+    data: String,
+    isCasting: Boolean,
+    subtitleCallback: (SubtitleFile) -> Unit,
+    callback: (ExtractorLink) -> Unit
+): Boolean {
 
-        val document = app.get(data).document
-        val mirrors = document.select(".mobius > .mirror > option")
+    val document = app.get(data).document
+    val mirrors = document.select(".mobius > .mirror > option")
 
-        for (option in mirrors) {
-            try {
-                val decoded = String(
-                    Base64.getDecoder().decode(option.attr("data-em"))
-                )
+    for (option in mirrors) {
+        try {
+            val decoded = String(
+                Base64.getDecoder().decode(option.attr("data-em"))
+            )
 
-                val iframe = Jsoup.parse(decoded)
-                    .select("iframe")
-                    .first()
-                    ?: continue
+            val iframe = Jsoup.parse(decoded)
+                .select("iframe")
+                .first()
+                ?: continue
 
-                val iframeUrl = fixUrl(iframe.attr("src"))
+            val iframeUrl = fixUrl(iframe.attr("src"))
 
-                val rawText = option.text().trim()
-                val quality = getIndexQuality(rawText)
-
-                val mirrorName = rawText
-                    .replace(Regex("\\d{3,4}p", RegexOption.IGNORE_CASE), "")
-                    .replace("-", "")
-                    .trim()
-
-                loadExtractor(
-                    iframeUrl,
-                    data,
-                    subtitleCallback
-                ) { link ->
-                    callback(
-                        link.copy(
-                            source = mirrorName,
-                            name = mirrorName,
-                            quality = quality
-                        )
-                    )
-                }
-
-            } catch (_: Throwable) {
-                continue
+            loadExtractor(
+                iframeUrl,
+                data,
+                subtitleCallback
+            ) { link ->
+                callback(link)
             }
-        }
 
-        return true
+        } catch (_: Throwable) {
+            continue
+        }
     }
+
+    return true
+}
 
     // ================= Quality Helper =================
     private fun getIndexQuality(str: String?): Int {
