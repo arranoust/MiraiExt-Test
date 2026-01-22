@@ -196,17 +196,24 @@ override suspend fun loadLinks(
                 .trim()
 
             loadExtractor(
-                iframeUrl,
-                data,
-                subtitleCallback
-            ) { link ->
+    iframeUrl,
+    data,
+    subtitleCallback
+) { link ->
 
-                link.source = mirrorName
-                link.name = "$mirrorName ${quality}p"
-                link.quality = quality
+    callback(
+        ExtractorLink(
+            source = mirrorName,
+            name = "$mirrorName ${quality}p",
+            url = link.url,
+            referer = link.referer,
+            quality = quality,
+            isM3u8 = link.isM3u8,
+            headers = link.headers
+        )
+    )
+}
 
-                callback(link)
-            }
 
         } catch (_: Throwable) {
             continue
