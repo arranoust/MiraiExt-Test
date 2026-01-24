@@ -6,32 +6,58 @@ import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
 
 class NimegamiProvider : MainAPI() {
-
-    override var name = "Nimegami"
     override var mainUrl = "https://nimegami.id"
+    override var name = "Nimegami"
+    override val hasMainPage = true
     override var lang = "id"
-    override val supportedTypes = setOf(TvType.Anime)
+    override val supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA)
 
-    override suspend fun getMainPage(
-        page: Int,
-        request: MainPageRequest
-    ): HomePageResponse {
-
-        val doc = app.get(mainUrl).document
-
-        val items = doc.select("div.post-article article").mapNotNull {
-            it.toSearchResult()
+    companion object {
+        fun getType(t: String): TvType {
+            return when {
+                t.contains("Tv", true) -> TvType.Anime
+                t.contains("Movie", true) -> TvType.AnimeMovie
+                t.contains("OVA", true) || t.contains("Special", true) -> TvType.OVA
+                else -> TvType.Anime
+            }
         }
 
+        fun getStatus(t: String?): ShowStatus {
+            return when {
+                t?.contains("On-Going", true) == true -> ShowStatus.Ongoing
+                else -> ShowStatus.Completed
+            }
+        }
+    }
+
+    override val mainPage =
+            mainPageOf(
+                    "" to "Updated Anime",
+                    "/type/drama-movie" to "Drama Movie",
+                    "/type/drama-series" to "Drama Series",
+                    "/type/live" to "Live",
+                    "/type/live-action" to "Live Action",
+                    "/type/tv" to "Anime",
+                    "/type/movie" to "Movie",
+                    "/type/ona" to "ONA",
+                    "/type/ova" to "OVA",
+                    "/type/ova/special" to "OVA Special",
+            )
+
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        val document = app.get("$mainUrl${request.data}/page/$page").document
+        val home =
+                document.select("div.post-article article, div.archive article").mapNotNull {
+                    it.toSearchResult()
+                }
         return newHomePageResponse(
-            listOf(
-                HomePageList(
-                    "Update Terbaru",
-                    items,
-                    isHorizontalImages = true
-                )
-            ),
-            hasNext = true
+                list =
+                        HomePageList(
+                                name = request.name,
+                                list = home,
+                                isHorizontalImages = request.name != "Updated Anime"
+                        ),
+                hasNext = true
         )
     }
 
