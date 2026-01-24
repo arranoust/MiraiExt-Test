@@ -165,7 +165,7 @@ class NimegamiProvider : MainAPI() {
 
         tryParseJson<ArrayList<Sources>>(base64Decode(data))?.map { sources ->
             sources.url?.amap { url ->
-                loadFixedExtractor(url, sources.format, "$mainUrl/", subtitleCallback, callback)
+                loadFixedExtractor(url, sources.format, null, subtitleCallback, callback)
             }
         }
 
@@ -179,7 +179,7 @@ class NimegamiProvider : MainAPI() {
             subtitleCallback: (SubtitleFile) -> Unit,
             callback: (ExtractorLink) -> Unit
     ) = coroutineScope {
-        loadExtractor(url, referer, subtitleCallback) { link ->
+        loadExtractor(url, subtitleCallback) { link ->
 			launch(Dispatchers.IO) {
 				callback.invoke(
 					newExtractorLink(
