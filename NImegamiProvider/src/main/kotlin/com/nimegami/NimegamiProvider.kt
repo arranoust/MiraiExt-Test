@@ -156,21 +156,39 @@ class NimegamiProvider : MainAPI() {
         }
     }
 
-    override suspend fun loadLinks(
-            data: String,
-            isCasting: Boolean,
-            subtitleCallback: (SubtitleFile) -> Unit,
-            callback: (ExtractorLink) -> Unit
-    ): Boolean {
+override suspend fun loadLinks(
+    data: String,
+    isCasting: Boolean,
+    subtitleCallback: (SubtitleFile) -> Unit,
+    callback: (ExtractorLink) -> Unit
+): Boolean {
 
-        tryParseJson<ArrayList<Sources>>(base64Decode(data))?.map { sources ->
-            sources.url?.amap { url ->
-                loadFixedExtractor(url, sources.format, null, subtitleCallback, callback)
+    tryParseJson<ArrayList<Sources>>(base64Decode(data))?.forEach { sources ->
+        sources.url?.forEach { url ->
+
+            if (
+                url.contains("aplikasigratis.net") &&
+                url.contains(".mp4")
+            ) {
+                callback.invoke(
+                    newExtractorLink(
+                        "Berkasdrive",
+                        "Berkasdrive",
+                        url,
+                        ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = "https://dl.berkasdrive.com/"
+                        this.quality = getQualityFromName(sources.format)
+                    }
+                )
+                return@forEach
             }
+            loadFixedExtractor(url, sources.format, null, subtitleCallback, callback)
         }
-
-        return true
     }
+
+    return true
+}
 
     private suspend fun loadFixedExtractor(
             url: String,
