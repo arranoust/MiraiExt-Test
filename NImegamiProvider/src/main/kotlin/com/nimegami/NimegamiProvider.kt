@@ -1,5 +1,6 @@
 package com.nimegami
 
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
@@ -18,58 +19,54 @@ class NimegamiProvider : MainAPI() {
 
         val doc = app.get(mainUrl).document
 
-        val items = doc.select("div.list_eps_stream a").map {
+        val items = doc.select("div.post-article article").mapNotNull {
             it.toSearchResult()
         }
 
-        return HomePageResponse(
+        return newHomePageResponse(
             listOf(
                 HomePageList(
                     "Update Terbaru",
                     items,
                     isHorizontalImages = true
                 )
-            )
+            ),
+            hasNext = true
         )
     }
 
     private fun Element.toSearchResult(): SearchResponse {
-        val title = this.attr("title")
-        val href = fixUrl(this.attr("href"))
-        val poster = this.selectFirst("img")?.attr("src")
+        val title = selectFirst("h2 a")!!.text()
+        val href = fixUrl(selectFirst("h2 a")!!.attr("href"))
+        val poster = selectFirst("img")?.attr("src")
 
-        return AnimeSearchResponse(
-            title,
-            href,
-            name,
-            TvType.Anime,
-            poster,
-            null
-        )
+        return newAnimeSearchResponse(title, href, TvType.Anime) {
+            posterUrl = poster
+        }
     }
 
     override suspend fun load(url: String): LoadResponse {
-
         val doc = app.get(url).document
 
-        val title = doc.selectFirst("h1")?.text() ?: "Nimegami"
-        val poster = doc.selectFirst("img")?.attr("src")
+        val title = doc.selectFirst("h1")!!.text()
+        val poster = doc.selectFirst("div.coverthumbnail img")?.attr("src")
 
-        val episodes = doc.select("li.select-eps").map {
-            Episode(
-                data = it.attr("data"), // 🔴 BASE64 ASLI
-                name = it.text()
-            )
+        val episodes = doc.select("li.select-eps").mapIndexed { idx, li ->
+            newEpisode(
+                li.attr("data")
+            ) {
+                name = li.text()
+                episode = idx + 1
+            }
         }
 
-        return AnimeLoadResponse(
+        return newAnimeLoadResponse(
             title,
             url,
-            name,
-            TvType.Anime,
-            episodes
-        ).apply {
+            TvType.Anime
+        ) {
             posterUrl = poster
+            addEpisodes(DubStatus.Subbed, episodes)
         }
     }
 
@@ -80,18 +77,15 @@ class NimegamiProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
 
-        // 1️⃣ decode base64
         val decoded = base64Decode(data)
 
-        // 2️⃣ parse JSON
-        val sources = tryParseJson<List<Source>>(decoded)
-            ?: return false
+        val sources =
+            AppUtils.tryParseJson<List<Sources>>(decoded) ?: return false
 
-        // 3️⃣ kirim URL ke extractor
         sources.forEach { src ->
-            src.url?.forEach { link ->
+            src.url?.forEach { streamUrl ->
                 loadExtractor(
-                    link,
+                    streamUrl,
                     "https://dl.berkasdrive.com/",
                     subtitleCallback,
                     callback
@@ -101,9 +95,9 @@ class NimegamiProvider : MainAPI() {
 
         return true
     }
-}
 
-data class Source(
-    val format: String?,
-    val url: List<String>?
-)
+    data class Sources(
+        @JsonProperty("format") val format: String?,
+        @JsonProperty("url") val url: List<String>?
+    )
+}
