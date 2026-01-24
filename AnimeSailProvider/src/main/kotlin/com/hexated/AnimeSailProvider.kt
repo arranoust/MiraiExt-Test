@@ -65,17 +65,30 @@ class AnimeSail : MainAPI() {
 
     // ================= Main Page =================
     override val mainPage = mainPageOf(
-        "$mainUrl/page/" to "Episode Terbaru",
-        "$mainUrl/rilisan-anime-terbaru/page/" to "Anime Terbaru",
-        "$mainUrl/rilisan-donghua-terbaru/page/" to "Donghua Terbaru",
-        "$mainUrl/movie-terbaru/page/" to "Movie Terbaru",
+        "$mainUrl/rilisan-anime-terbaru/" to "Anime Terbaru",
+        "$mainUrl/rilisan-donghua-terbaru/" to "Donghua Terbaru",
+        "$mainUrl/movie-terbaru/" to "Movie Terbaru",
     )
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = request(request.data + page).document
-        val home = document.select("article").map { it.toSearchResult() }
-        return newHomePageResponse(request.name, home)
+override suspend fun getMainPage(
+    page: Int,
+    request: MainPageRequest
+): HomePageResponse {
+
+    val url = if (page == 1) {
+        request.data
+    } else {
+        "${request.data}page/$page"
     }
+
+    val document = request(url).document
+
+    val home = document
+        .select("div.listupd > article")
+        .map { it.toSearchResult() }
+
+    return newHomePageResponse(request.name, home)
+}
 
     // ================= Helpers =================
     private fun getProperAnimeLink(uri: String): String {
