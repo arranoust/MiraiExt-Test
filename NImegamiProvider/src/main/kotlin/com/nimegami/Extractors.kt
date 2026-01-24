@@ -3,10 +3,15 @@ package com.nimegami
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 
-open class Berkasdrive : ExtractorApi() {
+class Berkasdrive : ExtractorApi() {
+
     override val name = "Berkasdrive"
     override val mainUrl = "https://aplikasigratis.net"
     override val requiresReferer = true
+
+    override fun canHandle(url: String): Boolean {
+        return url.contains("aplikasigratis.net")
+    }
 
     override suspend fun getUrl(
         url: String,
@@ -14,26 +19,15 @@ open class Berkasdrive : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // pastikan hanya handle domain ini
-        if (
-            !url.contains("aplikasigratis.net") &&
-            !url.contains("berkasdrive.com")
-        ) return
-
-        val res = app.get(url, referer = referer)
-
-        val videoUrl = Regex(
-            "https://[^\"'\\s]+\\.mp4\\?token=[^\"'\\s]+"
-        ).find(res.text)?.value ?: return
-
+        // 🔑 URL SUDAH MP4 → LANGSUNG KIRIM
         callback.invoke(
             newExtractorLink(
                 name,
                 name,
-                videoUrl,
+                url,
                 ExtractorLinkType.VIDEO
             ) {
-                this.referer = url
+                this.referer = "https://dl.berkasdrive.com/"
                 this.quality = Qualities.Unknown.value
             }
         )

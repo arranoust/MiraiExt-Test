@@ -163,29 +163,32 @@ override suspend fun loadLinks(
     callback: (ExtractorLink) -> Unit
 ): Boolean {
 
-    tryParseJson<ArrayList<Sources>>(base64Decode(data))?.forEach { sources ->
-        sources.url?.forEach { url ->
-
-            if (
-                url.contains("aplikasigratis.net") &&
-                url.contains(".mp4")
-            ) {
-                callback.invoke(
-                    newExtractorLink(
-                        "Berkasdrive",
-                        "Berkasdrive",
-                        url,
-                        ExtractorLinkType.VIDEO
-                    ) {
-                        this.referer = "https://dl.berkasdrive.com/"
-                        this.quality = getQualityFromName(sources.format)
-                    }
-                )
-                return@forEach
-            }
-            loadFixedExtractor(url, sources.format, null, subtitleCallback, callback)
-        }
+    // 1️⃣ kalau data langsung mp4
+    if (data.contains("aplikasigratis.net") && data.contains(".mp4")) {
+        loadExtractor(
+            data,
+            "https://dl.berkasdrive.com/",
+            subtitleCallback,
+            callback
+        )
+        return true
     }
+
+    // 2️⃣ kalau data base64 json
+    val decoded = runCatching { base64Decode(data) }.getOrNull() ?: return false
+
+    val mp4 =
+        Regex("https://[^\"'\\s]+\\.mp4\\?token=[^\"'\\s]+")
+            .find(decoded)
+            ?.value
+            ?: return false
+
+    loadExtractor(
+        mp4,
+        "https://dl.berkasdrive.com/",
+        subtitleCallback,
+        callback
+    )
 
     return true
 }
