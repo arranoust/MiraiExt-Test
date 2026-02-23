@@ -5,8 +5,8 @@ import com.lagradost.cloudstream3.plugins.Plugin
 import android.content.Context
 
 @CloudstreamPlugin
-class AniZoneProviderPlugin: Plugin() {
+class AnizonePlugin: Plugin() {
     override fun load(context: Context) {
-        registerMainAPI(AniZoneProvider())
+        registerMainAPI(AnizoneProvider())
     }
 }
