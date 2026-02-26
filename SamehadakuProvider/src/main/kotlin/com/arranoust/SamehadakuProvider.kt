@@ -10,7 +10,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
-import android.content.Context
 
 class SamehadakuProvider : MainAPI() {
     override var mainUrl = "https://v1.samehadaku.how"
@@ -20,7 +19,9 @@ class SamehadakuProvider : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA)
 
-    private var internalContext: Context? = null
+    companion object {
+        var context: android.content.Context? = null
+    }
 
     companion object {
         fun getType(t: String): TvType = when {
@@ -41,13 +42,10 @@ class SamehadakuProvider : MainAPI() {
     )
 
     // ================== Homepage ==================
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        
-        if (internalContext == null) {
-            internalContext = com.lagradost.cloudstream3.MainActivity.instance
-        }
-
-        internalContext?.let { PopupHelper.showWelcome(it) }
+    override suspend fun getMainPage(
+        page: Int,
+        request: MainPageRequest): HomePageResponse {
+        context?.let { PopupHelper.showPopupIfNeeded(it) }
 
         val document = safeGet("$mainUrl/${request.data.format(page)}")
             ?: return newHomePageResponse(listOf(), false)
