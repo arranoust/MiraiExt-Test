@@ -13,10 +13,8 @@ object PopupHelper {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         if (prefs.getBoolean(KEY_SHOWN, false)) return
 
-        // Supaya tidak muncul lagi di pembukaan berikutnya
         prefs.edit().putBoolean(KEY_SHOWN, true).apply()
 
-        // Harus dijalankan di Main Thread agar tidak crash
         Handler(Looper.getMainLooper()).post {
             AlertDialog.Builder(context)
                 .setTitle("Selamat Datang!")
@@ -24,14 +22,12 @@ object PopupHelper {
                 .setPositiveButton("Mulai") { dialog, _ -> dialog.dismiss() }
                 .setNeutralButton("Kunjungi GitHub") { _, _ ->
                     try {
-                        // Membuka link GitHub di browser HP user
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(REPO_URL))
                         context.startActivity(intent)
                     } catch (e: Exception) {
-                        // Jaga-jaga jika browser tidak ditemukan
                     }
                 }
-                .setCancelable(false) // User harus klik tombol Mulai
+                .setCancelable(false) 
                 .show()
         }
     }
