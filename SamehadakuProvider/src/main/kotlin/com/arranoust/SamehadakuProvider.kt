@@ -44,11 +44,12 @@ class SamehadakuProvider : MainAPI() {
         request: MainPageRequest
     ): HomePageResponse {
 
-        if (context == null) {
-            context = com.lagradost.cloudstream3.MainActivity.instance
+        val currentContext = context ?: (app as? Any)?.let { 
+            try { it.javaClass.getMethod("getContext").invoke(it) as? android.content.Context } 
+            catch(e: Exception) { null }
         }
 
-        context?.let { PopupHelper.showWelcome(it) }
+        currentContext?.let { PopupHelper.showWelcome(it) }
 
         val document = safeGet("$mainUrl/${request.data.format(page)}")
             ?: return newHomePageResponse(listOf(), false)

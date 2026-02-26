@@ -1,4 +1,4 @@
-package com.samehadaku
+package com.arranoust
 
 import android.app.AlertDialog
 import android.content.Context
