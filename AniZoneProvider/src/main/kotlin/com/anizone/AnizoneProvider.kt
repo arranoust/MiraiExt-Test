@@ -48,11 +48,8 @@ class AnizoneProvider : MainAPI() {
     override val hasDownloadSupport = true
 
     override val mainPage = mainPageOf(
-        "0" to "All",
         "2" to "Latest TV Series",
         "4" to "Latest Movies",
-        "3" to "OVA",
-        "7" to "Special",
     )
 
 

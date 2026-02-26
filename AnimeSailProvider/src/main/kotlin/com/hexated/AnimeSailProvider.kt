@@ -5,11 +5,11 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addAniListId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addMalId
 import com.lagradost.cloudstream3.mvvm.safeApiCall
 import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.nicehttp.NiceResponse
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import java.util.Base64
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import kotlin.text.Regex
@@ -29,6 +29,13 @@ class AnimeSail : MainAPI() {
         TvType.OVA
     )
 
+    private val cfInterceptor = CloudflareKiller()
+
+    override val client = baseClient.newBuilder()
+        .addInterceptor(cfInterceptor)
+        .build()
+
+    // Companion object: type/status helpers
     companion object {
         fun getType(t: String): TvType {
             return when {
@@ -47,8 +54,9 @@ class AnimeSail : MainAPI() {
         }
     }
 
+    // HTTP request helper
     private suspend fun request(url: String, ref: String? = null): NiceResponse {
-        return app.get(
+        return client.get(
             url,
             headers = mapOf(
                 "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -59,36 +67,23 @@ class AnimeSail : MainAPI() {
                 "Referer" to (ref ?: mainUrl)
             ),
             cookies = mapOf("_as_ipin_ct" to "ID"),
-            timeout = 20_000
+            timeout = 30_000
         )
     }
 
     // ================= Main Page =================
     override val mainPage = mainPageOf(
-        "$mainUrl/rilisan-anime-terbaru/" to "Anime Terbaru",
-        "$mainUrl/rilisan-donghua-terbaru/" to "Donghua Terbaru",
-        "$mainUrl/movie-terbaru/" to "Movie Terbaru",
+        "$mainUrl/page/" to "Episode Terbaru",
+        "$mainUrl/rilisan-anime-terbaru/page/" to "Anime Terbaru",
+        "$mainUrl/rilisan-donghua-terbaru/page/" to "Donghua Terbaru",
+        "$mainUrl/movie-terbaru/page/" to "Movie Terbaru",
     )
 
-override suspend fun getMainPage(
-    page: Int,
-    request: MainPageRequest
-): HomePageResponse {
-
-    val url = if (page == 1) {
-        request.data
-    } else {
-        "${request.data}page/$page"
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        val document = request(request.data + page).document
+        val home = document.select("article").map { it.toSearchResult() }
+        return newHomePageResponse(request.name, home)
     }
-
-    val document = request(url).document
-
-    val home = document
-        .select("div.listupd > article")
-        .map { it.toSearchResult() }
-
-    return newHomePageResponse(request.name, home)
-}
 
     // ================= Helpers =================
     private fun getProperAnimeLink(uri: String): String {
@@ -174,45 +169,54 @@ override suspend fun getMainPage(
         }
     }
 
-// ================= Load Extractor Links =================
-override suspend fun loadLinks(
-    data: String,
-    isCasting: Boolean,
-    subtitleCallback: (SubtitleFile) -> Unit,
-    callback: (ExtractorLink) -> Unit
-): Boolean {
+    // ================= Load Extractor Links =================
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
 
-    val document = app.get(data).document
-    val mirrors = document.select(".mobius > .mirror > option")
+        val document = request(data).document
 
-    for (option in mirrors) {
-        try {
-            val decoded = String(
-                Base64.getDecoder().decode(option.attr("data-em"))
-            )
+        for (option in document.select(".mobius > .mirror > option")) {
+            try {
+                val iframe = fixUrl(
+                    Jsoup.parse(base64Decode(option.attr("data-em")))
+                        .select("iframe")
+                        .attr("src")
+                )
 
-            val iframe = Jsoup.parse(decoded)
-                .select("iframe")
-                .first()
-                ?: continue
+                val quality = getIndexQuality(option.text())
 
-            val iframeUrl = fixUrl(iframe.attr("src"))
-
-            loadExtractor(
-                iframeUrl,
-                data,
-                subtitleCallback
-            ) { link ->
-                callback(link)
+                loadExtractor(iframe, data, subtitleCallback) { link ->
+                    kotlinx.coroutines.runBlocking {
+                        callback(
+                            newExtractorLink(
+                                source = name,
+                                name = name,
+                                url = link.url,
+                                type = link.type
+                            ) {
+                                this.referer = link.referer
+                                this.quality = quality
+                                if (link.headers.isNotEmpty()) {
+                                    this.headers = link.headers
+                                }
+                                if (link.extractorData != null) {
+                                    this.extractorData = link.extractorData
+                                }
+                            }
+                        )
+                    }
+                }
+            } catch (_: Throwable) {
+                // Ignore errors per item
             }
-
-        } catch (_: Throwable) {
-            continue
         }
-    }
 
-    return true
-}
+        return true
+    }
 
     // ================= Quality Helper =================
     private fun getIndexQuality(str: String?): Int {
