@@ -4,19 +4,12 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addAniListId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addMalId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.CloudstreamApp.Companion.context
 import com.lagradost.cloudstream3.utils.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
-import android.app.AlertDialog
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import android.os.Handler
-import android.os.Looper
 
 class SamehadakuProvider : MainAPI() {
     override var mainUrl = "https://v1.samehadaku.how"
@@ -46,7 +39,9 @@ class SamehadakuProvider : MainAPI() {
 
     // ================== Homepage ==================
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        context?.let { PopupHelper.showWelcome(it) }
+        com.lagradost.cloudstream3.CloudstreamApp.context?.let { 
+        PopupHelper.showWelcome(it) 
+        }
 
         val document = safeGet("$mainUrl/${request.data.format(page)}")
             ?: return newHomePageResponse(listOf(), false)
