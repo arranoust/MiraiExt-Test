@@ -7,6 +7,7 @@ import com.lagradost.cloudstream3.mvvm.safeApiCall
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.nicehttp.NiceResponse
+import com.lagradost.nicehttp.Requests
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -30,6 +31,11 @@ class AnimeSailProvider : MainAPI() {
     )
 
     private val cfInterceptor = CloudflareKiller()
+    private val customClient = Requests(
+        baseClient.newBuilder()
+            .addInterceptor(cfInterceptor)
+            .build()
+    )
 
     // Companion object: type/status helpers
     companion object {
@@ -52,7 +58,7 @@ class AnimeSailProvider : MainAPI() {
 
     // HTTP request helper
     private suspend fun request(url: String, ref: String? = null): NiceResponse {
-        return app.get(
+        return customClient.get(
             url,
             headers = mapOf(
                 "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -62,7 +68,6 @@ class AnimeSailProvider : MainAPI() {
                         "Chrome/120.0.0.0 Safari/537.36",
                 "Referer" to (ref ?: mainUrl)
             ),
-            interceptors = listOf(cfInterceptor),
             cookies = mapOf("_as_ipin_ct" to "ID"),
             timeout = 30_000
         )
@@ -170,7 +175,7 @@ class AnimeSailProvider : MainAPI() {
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
+        subtitleCallback: (newSubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
 
