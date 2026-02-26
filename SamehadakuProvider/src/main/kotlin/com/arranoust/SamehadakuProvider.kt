@@ -39,6 +39,7 @@ class SamehadakuProvider : MainAPI() {
 
     // ================== Homepage ==================
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        context?.let { PopupHelper.showWelcome(it) }
         val document = safeGet("$mainUrl/${request.data.format(page)}")
             ?: return newHomePageResponse(listOf(), false)
         val items = document.select("li[itemtype='http://schema.org/CreativeWork']")

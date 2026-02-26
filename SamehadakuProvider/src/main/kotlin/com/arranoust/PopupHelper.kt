@@ -1,0 +1,38 @@
+package com.arranoust // Sesuaikan dengan package provider kamu
+
+import android.app.AlertDialog
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
+
+object PopupHelper {
+    private const val PREFS_NAME = "MiraiExtPrefs"
+    private const val KEY_SHOWN = "first_time_popup"
+
+    fun showWelcome(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_SHOWN, false)) return
+
+        // Supaya tidak muncul lagi di pembukaan berikutnya
+        prefs.edit().putBoolean(KEY_SHOWN, true).apply()
+
+        // Harus dijalankan di Main Thread agar tidak crash
+        Handler(Looper.getMainLooper()).post {
+            AlertDialog.Builder(context)
+                .setTitle("Selamat Datang!")
+                .setMessage("Selamat menikmati konten gratis di MiraiExt. Semoga lancar dan selamat menonton! 🍿")
+                .setPositiveButton("Mulai") { dialog, _ -> dialog.dismiss() }
+                .setNeutralButton("Kunjungi GitHub") { _, _ ->
+                    try {
+                        // Membuka link GitHub di browser HP user
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(REPO_URL))
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        // Jaga-jaga jika browser tidak ditemukan
+                    }
+                }
+                .setCancelable(false) // User harus klik tombol Mulai
+                .show()
+        }
+    }
+}
