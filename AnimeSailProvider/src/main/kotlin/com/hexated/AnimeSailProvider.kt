@@ -14,7 +14,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import kotlin.text.Regex
 
-class AnimeSail : MainAPI() {
+class AnimeSailProvider : MainAPI() {
 
     // Basic info
     override var mainUrl = "https://154.26.137.28"
@@ -30,10 +30,6 @@ class AnimeSail : MainAPI() {
     )
 
     private val cfInterceptor = CloudflareKiller()
-
-    override val client = baseClient.newBuilder()
-        .addInterceptor(cfInterceptor)
-        .build()
 
     // Companion object: type/status helpers
     companion object {
@@ -56,7 +52,7 @@ class AnimeSail : MainAPI() {
 
     // HTTP request helper
     private suspend fun request(url: String, ref: String? = null): NiceResponse {
-        return client.get(
+        return app.get(
             url,
             headers = mapOf(
                 "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -66,6 +62,7 @@ class AnimeSail : MainAPI() {
                         "Chrome/120.0.0.0 Safari/537.36",
                 "Referer" to (ref ?: mainUrl)
             ),
+            interceptors = listOf(cfInterceptor),
             cookies = mapOf("_as_ipin_ct" to "ID"),
             timeout = 30_000
         )
