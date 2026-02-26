@@ -135,7 +135,7 @@ class SamehadakuProvider : MainAPI() {
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
-        subtitleCallback: (newSubtitleFile) -> Unit,
+        subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = safeGet(data) ?: return false
@@ -158,7 +158,7 @@ class SamehadakuProvider : MainAPI() {
         url: String,
         name: String,
         referer: String? = null,
-        subtitleCallback: (newSubtitleFile) -> Unit,
+        subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
         // referer diset langsung di newExtractorLink

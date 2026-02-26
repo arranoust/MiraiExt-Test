@@ -238,7 +238,7 @@ class AnizoneProvider : MainAPI() {
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
-        subtitleCallback: (newSubtitleFile) -> Unit,
+        subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
 
@@ -250,7 +250,7 @@ class AnizoneProvider : MainAPI() {
 
         mediaPlayer?.select("track")?.forEach {
             subtitleCallback.invoke(
-                newSubtitleFile (
+                SubtitleFile (
                     it.attr("label"),
                     it.attr("src")
                 )
