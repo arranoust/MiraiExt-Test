@@ -29,8 +29,6 @@ class AnimeSailProvider : MainAPI() {
         TvType.AnimeMovie,
         TvType.OVA
     )
-    
-    private val cfInterceptor = CloudflareKiller()
 
     // Companion object: type/status helpers
     companion object {
@@ -65,7 +63,6 @@ class AnimeSailProvider : MainAPI() {
             ),
             cookies = mapOf("_as_ipin_ct" to "ID"),
             timeout = 30_000
-            interceptor = cfInterceptor
         )
     }
 
