@@ -29,13 +29,8 @@ class AnimeSailProvider : MainAPI() {
         TvType.AnimeMovie,
         TvType.OVA
     )
-
+    
     private val cfInterceptor = CloudflareKiller()
-    private val customClient = Requests(
-        baseClient.newBuilder()
-            .addInterceptor(cfInterceptor)
-            .build()
-    )
 
     // Companion object: type/status helpers
     companion object {
@@ -58,7 +53,7 @@ class AnimeSailProvider : MainAPI() {
 
     // HTTP request helper
     private suspend fun request(url: String, ref: String? = null): NiceResponse {
-        return customClient.get(
+        return app.get(
             url,
             headers = mapOf(
                 "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -70,6 +65,7 @@ class AnimeSailProvider : MainAPI() {
             ),
             cookies = mapOf("_as_ipin_ct" to "ID"),
             timeout = 30_000
+            interceptor = cfInterceptor
         )
     }
 
