@@ -12,9 +12,6 @@ import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 
 class SamehadakuProvider : MainAPI() {
-    companion object {
-        var context: android.content.Context? = null
-    }
     override var mainUrl = "https://v1.samehadaku.how"
     override var name = "Samehadaku"
     override val hasMainPage = true
@@ -23,6 +20,7 @@ class SamehadakuProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA)
 
     companion object {
+        var context: android.content.Context? = null
         fun getType(t: String): TvType = when {
             t.contains("OVA", true) || t.contains("Special", true) -> TvType.OVA
             t.contains("Movie", true) -> TvType.AnimeMovie
@@ -46,7 +44,7 @@ class SamehadakuProvider : MainAPI() {
         request: MainPageRequest
         ): HomePageResponse {
         context?.let { StarPopupHelper.showStarPopupIfNeeded(it) }
-        
+
         val document = safeGet("$mainUrl/${request.data.format(page)}")
             ?: return newHomePageResponse(listOf(), false)
         val items = document.select("li[itemtype='http://schema.org/CreativeWork']")
