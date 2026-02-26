@@ -5,6 +5,8 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addAniListId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addMalId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.CloudstreamApp 
+import android.content.Context
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -44,10 +46,7 @@ class SamehadakuProvider : MainAPI() {
         request: MainPageRequest
     ): HomePageResponse {
 
-        val currentContext = context ?: (app as? Any)?.let { 
-            try { it.javaClass.getMethod("getContext").invoke(it) as? android.content.Context } 
-            catch(e: Exception) { null }
-        }
+        val activityContext = com.lagradost.cloudstream3.CloudstreamApp.context
 
         currentContext?.let { PopupHelper.showWelcome(it) }
 
