@@ -5,8 +5,6 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addAniListId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addMalId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.CloudstreamApp 
-import android.content.Context
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -14,6 +12,9 @@ import kotlinx.coroutines.runBlocking
 import org.jsoup.nodes.Element
 
 class SamehadakuProvider : MainAPI() {
+    companion object {
+        var context: android.content.Context? = null
+    }
     override var mainUrl = "https://v1.samehadaku.how"
     override var name = "Samehadaku"
     override val hasMainPage = true
@@ -22,7 +23,6 @@ class SamehadakuProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA)
 
     companion object {
-        var context: android.content.Context? = null
         fun getType(t: String): TvType = when {
             t.contains("OVA", true) || t.contains("Special", true) -> TvType.OVA
             t.contains("Movie", true) -> TvType.AnimeMovie
@@ -44,12 +44,9 @@ class SamehadakuProvider : MainAPI() {
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest
-    ): HomePageResponse {
-
-        val activityContext = com.lagradost.cloudstream3.CloudstreamApp.context
-
-        currentContext?.let { PopupHelper.showWelcome(it) }
-
+        ): HomePageResponse {
+        context?.let { StarPopupHelper.showStarPopupIfNeeded(it) }
+        
         val document = safeGet("$mainUrl/${request.data.format(page)}")
             ?: return newHomePageResponse(listOf(), false)
         val items = document.select("li[itemtype='http://schema.org/CreativeWork']")
