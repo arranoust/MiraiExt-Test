@@ -43,7 +43,7 @@ class SamehadakuProvider : MainAPI() {
         page: Int,
         request: MainPageRequest
         ): HomePageResponse {
-        context?.let { StarPopupHelper.showStarPopupIfNeeded(it) }
+        context?.let { PopupHelper.showPopupIfNeeded(it) }
 
         val document = safeGet("$mainUrl/${request.data.format(page)}")
             ?: return newHomePageResponse(listOf(), false)
