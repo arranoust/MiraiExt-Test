@@ -72,53 +72,39 @@ class SamehadakuProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        // 1. Ambil dokumen awal
         var document = safeGet(url) ?: return null
         
-        // 2. Jika ini bukan halaman anime (misal halaman episode), cari link anime-nya dulu
         if (!url.contains("/anime/")) {
             val animeLink = document.selectFirst("div.nvs.nvsc a")?.attr("href")
             if (animeLink != null) {
                 val newDoc = safeGet(fixUrl(animeLink))
-                if (newDoc != null) {
-                    document = newDoc
-                }
+                if (newDoc != null) document = newDoc
             }
         }
 
-        // 3. Ambil data dasar dari dokumen
         val title = document.selectFirst("h1.entry-title")?.text()?.removeBloat() ?: return null
         val poster = fixUrlNull(document.selectFirst("div.thumb > img")?.attr("src"))
-        val typeText = document.selectFirst("div.spe > span:contains(Type)")?.ownText() ?: "tv"
-        val type = getType(typeText)
-        val yearText = document.selectFirst("div.spe > span:contains(Rilis)")?.ownText() ?: ""
-        val year = Regex("\\d{4}").find(yearText)?.value?.toIntOrNull()
+        val type = getType(document.selectFirst("div.spe > span:contains(Type)")?.ownText() ?: "tv")
+        val year = Regex("\\d{4}").find(document.selectFirst("div.spe > span:contains(Rilis)")?.ownText() ?: "")?.value?.toIntOrNull()
 
-        // 4. Metadata Mapping (MAL & AniZip)
         val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
         val malId = tracker?.malId
         
         var animeMetaData: MetaAnimeData? = null
         if (malId != null) {
             try {
-                // Menggunakan app.get secara langsung (fungsi suspend)
-                val response = app.get("https://api.ani.zip/mappings?mal_id=$malId")
-                val syncData = response.text
+                val syncData = app.get("https://api.ani.zip/mappings?mal_id=$malId").text
                 animeMetaData = ObjectMapper().readValue(syncData, MetaAnimeData::class.java)
-            } catch (e: Exception) { 
-                // Abaikan jika metadata gagal, agar provider tidak crash
-            }
+            } catch (e: Exception) { }
         }
 
-        // 5. Parsing Episode
         val episodes = document.select("div.lstepsiode.listeps ul li").mapNotNull { li ->
             val a = li.selectFirst("span.lchx > a") ?: return@mapNotNull null
-            val epText = a.text()
-            val epNum = Regex("Episode\\s?(\\d+)").find(epText)?.groupValues?.getOrNull(1)
+            val epNum = Regex("Episode\\s?(\\d+)").find(a.text())?.groupValues?.getOrNull(1)
             val metaEp = animeMetaData?.episodes?.get(epNum)
 
             newEpisode(fixUrl(a.attr("href"))) {
-                this.name = metaEp?.title?.get("en") ?: epText
+                this.name = metaEp?.title?.get("en") ?: a.text()
                 this.episode = epNum?.toIntOrNull()
                 this.posterUrl = metaEp?.image ?: poster
                 this.description = metaEp?.overview
@@ -126,32 +112,38 @@ class SamehadakuProvider : MainAPI() {
             }
         }.reversed()
 
-        // 6. Return Response
         return newAnimeLoadResponse(title, url, type) {
             this.engName = animeMetaData?.titles?.get("en") ?: title
             this.posterUrl = tracker?.image ?: poster
             this.year = year
-            val documentPlot = document.select("div.desc p").text().trim()
-            this.plot = animeMetaData?.description?.replace(Regex("<.*?>"), "") ?: documentPlot
-            
+            this.plot = animeMetaData?.description?.replace(Regex("<.*?>"), "") ?: document.select("div.desc p").text().trim()
             addEpisodes(DubStatus.Subbed, episodes)
             addMalId(malId)
             addAniListId(tracker?.aniId?.toIntOrNull())
-            
-            val trailerUrl = document.selectFirst("div.trailer-anime iframe")?.attr("src")
-            if (trailerUrl != null) {
-                addTrailer(fixUrl(trailerUrl))
-            }
+            addTrailer(document.selectFirst("div.trailer-anime iframe")?.attr("src"))
         }
     }
 
-    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
         val document = safeGet(data) ?: return false
-        document.select("div#downloadb li").forEach { el ->
-            el.select("a").forEach { a ->
-                loadExtractor(fixUrl(a.attr("href")), "$mainUrl/", subtitleCallback) { link ->
+        
+        // Gunakan loop for biasa untuk mendukung pemanggilan suspend loadExtractor
+        val downloadElements = document.select("div#downloadb li")
+        for (el in downloadElements) {
+            val quality = el.selectFirst("strong")?.text()?.fixQuality() ?: Qualities.Unknown.value
+            val links = el.select("a")
+            for (a in links) {
+                val url = fixUrl(a.attr("href"))
+                loadExtractor(url, "$mainUrl/", subtitleCallback) { link ->
                     callback.invoke(newExtractorLink(link.name, link.name, link.url, link.type) {
-                        this.quality = el.selectFirst("strong")?.text()?.fixQuality() ?: Qualities.Unknown.value
+                        this.quality = quality
+                        this.referer = link.referer
+                        this.headers = link.headers
                     })
                 }
             }
@@ -159,7 +151,6 @@ class SamehadakuProvider : MainAPI() {
         return true
     }
 
-    // UTILS & HELPER
     private fun String.fixQuality(): Int = when (this.uppercase()) {
         "4K" -> Qualities.P2160.value
         "FULLHD" -> Qualities.P1080.value
@@ -176,7 +167,6 @@ class SamehadakuProvider : MainAPI() {
     } catch (_: Exception) { null }
 }
 
-// DATA CLASSES (Di luar Class Utama)
 @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 data class MetaEpisode(val title: Map<String, String>?, val overview: String?, val image: String?, val airDateUtc: String?)
 @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
