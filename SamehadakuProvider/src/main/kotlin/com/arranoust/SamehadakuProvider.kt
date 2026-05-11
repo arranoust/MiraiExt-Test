@@ -36,6 +36,7 @@ class SamehadakuProvider : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        context?.let { PopupHelper.showPopupIfNeeded(it) }
         val document = safeGet("$mainUrl/${request.data.format(page)}")
             ?: return newHomePageResponse(listOf(), false)
         val items = document.select("li[itemtype='http://schema.org/CreativeWork']")
@@ -72,10 +73,15 @@ class SamehadakuProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val fixUrl = if (url.contains("/anime/")) url
-        else safeGet(url)?.selectFirst("div.nvs.nvsc a")?.attr("href") ?: url
+        // Perbaikan: Jangan panggil safeGet di inisialisasi variabel jika tipenya membingungkan compiler
+        val document = if (url.contains("/anime/")) {
+            safeGet(url)
+        } else {
+            val searchPage = safeGet(url)
+            val link = searchPage?.selectFirst("div.nvs.nvsc a")?.attr("href")
+            if (link != null) safeGet(fixUrl(link)) else searchPage
+        } ?: return null
 
-        val document = safeGet(fixUrl) ?: return null
         val title = document.selectFirst("h1.entry-title")?.text()?.removeBloat() ?: return null
         val poster = fixUrlNull(document.selectFirst("div.thumb > img")?.attr("src"))
         val type = getType(document.selectFirst("div.spe > span:contains(Type)")?.ownText() ?: "tv")
