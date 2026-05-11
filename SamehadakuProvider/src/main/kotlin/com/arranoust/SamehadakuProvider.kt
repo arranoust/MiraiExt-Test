@@ -132,15 +132,25 @@ class SamehadakuProvider : MainAPI() {
     ): Boolean {
         val document = safeGet(data) ?: return false
         
-        // Gunakan loop for biasa untuk mendukung pemanggilan suspend loadExtractor
+        // Ambil semua elemen li di dalam download box
         val downloadElements = document.select("div#downloadb li")
+        
         for (el in downloadElements) {
             val quality = el.selectFirst("strong")?.text()?.fixQuality() ?: Qualities.Unknown.value
             val links = el.select("a")
+            
             for (a in links) {
                 val url = fixUrl(a.attr("href"))
+                
+                // PENTING: Gunakan loadExtractor tapi jangan panggil fungsi suspend lain di dalamnya
+                // Jika loadExtractor sendiri adalah suspend, dia harus berada di lingkup yang benar
                 loadExtractor(url, "$mainUrl/", subtitleCallback) { link ->
-                    callback.invoke(newExtractorLink(link.name, link.name, link.url, link.type) {
+                    callback.invoke(newExtractorLink(
+                        link.name, 
+                        link.name, 
+                        link.url, 
+                        link.type
+                    ) {
                         this.quality = quality
                         this.referer = link.referer
                         this.headers = link.headers
