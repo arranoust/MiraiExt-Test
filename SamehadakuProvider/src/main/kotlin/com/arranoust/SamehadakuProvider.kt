@@ -147,7 +147,7 @@ class SamehadakuProvider : MainAPI() {
                     // loadExtractor dipanggil dalam lingkup amap yang merupakan coroutine scope
                     loadExtractor(fixUrl(href), "$mainUrl/", subtitleCallback) { link ->
                         callback.invoke(
-                            ExtractorLink(
+                            newExtractorLink(
                                 link.source,
                                 link.name,
                                 link.url,
