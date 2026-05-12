@@ -20,7 +20,6 @@ class SamehadakuProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA)
 
     companion object {
-        var context: android.content.Context? = null
         fun getType(t: String): TvType = when {
             t.contains("OVA", true) || t.contains("Special", true) -> TvType.OVA
             t.contains("Movie", true) -> TvType.AnimeMovie
@@ -54,7 +53,7 @@ class SamehadakuProvider : MainAPI() {
         val a = this.selectFirst("div.thumb a") ?: this.selectFirst("a") ?: return null
         val title = this.selectFirst("h2.entry-title a")?.text()?.trim()?.removeBloat()
             ?: a.attr("title")?.removeBloat() ?: return null
-        val href = fixUrlNull(a.attr("href")) ?: return null
+        val href = fixUrl(a.attr("href"))
         val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("src"))
         val epNum = this.selectFirst("div.dtla author")?.text()?.toIntOrNull()
 
@@ -65,8 +64,7 @@ class SamehadakuProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
-        val document = safeGet("$mainUrl/?s=$encodedQuery") ?: return emptyList()
+        val document = safeGet("$mainUrl/?s=$query") ?: return emptyList()
         return document.select("main#main article[itemtype='http://schema.org/CreativeWork']").mapNotNull {
             val a = it.selectFirst("div.animposx a") ?: return@mapNotNull null
             val title = a.selectFirst("h2")?.text()?.trim() ?: a.attr("title") ?: return@mapNotNull null
@@ -102,7 +100,6 @@ class SamehadakuProvider : MainAPI() {
         val logoUrl = fetchTmdbLogo(animeMetaData?.mappings?.tmdbId, type)
         val backgroundPoster = animeMetaData?.images?.find { it.coverType == "Fanart" }?.url ?: tracker?.cover
 
-        // Perbaikan: Tambahkan .filterNotNull() di akhir amap
         val episodes = document.select("div.lstepsiode.listeps ul li").amap { li ->
             val header = li.selectFirst("span.lchx > a") ?: return@amap null
             val epName = header.text()
@@ -120,14 +117,11 @@ class SamehadakuProvider : MainAPI() {
 
         return newAnimeLoadResponse(title, url, type) {
             this.engName = animeMetaData?.titles?.get("en") ?: title
-            this.japName = animeMetaData?.titles?.get("ja")
             this.posterUrl = tracker?.image ?: poster
             this.backgroundPosterUrl = backgroundPoster
             try { this.logoUrl = logoUrl } catch(e: Throwable) {}
             this.year = year
             this.plot = animeMetaData?.description?.replace(Regex("<.*?>"), "") ?: document.select("div.desc p").text().trim()
-            this.tags = document.select("div.genre-info > a").map { it.text() }
-            this.showStatus = getStatus(document.selectFirst("div.spe > span:contains(Status)")?.ownText() ?: "")
             
             addEpisodes(DubStatus.Subbed, episodes)
             addMalId(malId)
@@ -144,16 +138,20 @@ class SamehadakuProvider : MainAPI() {
     ): Boolean {
         val document = safeGet(data) ?: return false
         
-        // Perbaikan: Gunakan loop for atau amap untuk menghindari error "Suspension functions"
-        document.select("div#downloadb li").amap { el ->
-            val quality = el.selectFirst("strong")?.text() ?: "Unknown"
-            el.select("a").amap { a ->
+        // GUNAKAN FOR-LOOP STANDAR UNTUK MENGHINDARI ERROR COROUTINE
+        val elements = document.select("div#downloadb li")
+        for (el in elements) {
+            val qualityText = el.selectFirst("strong")?.text() ?: "Unknown"
+            val quality = qualityText.fixQuality()
+            val anchors = el.select("a")
+            for (a in anchors) {
                 val href = a.attr("href")
                 if (href.isNotBlank()) {
+                    // Panggil loadExtractor langsung di dalam loop suspend
                     loadExtractor(fixUrl(href), "$mainUrl/", subtitleCallback) { link ->
                         callback.invoke(newExtractorLink(link.name, link.name, link.url, link.type) {
                             this.referer = link.referer
-                            this.quality = quality.fixQuality()
+                            this.quality = quality
                             this.headers = link.headers
                         })
                     }
@@ -174,7 +172,7 @@ class SamehadakuProvider : MainAPI() {
         this.replace(Regex("(?i)(Nonton|Anime|Subtitle\\s?Indonesia|Sub\\s?Indo|Lengkap|Batch)"), "").trim()
 
     private fun fixUrl(url: String): String = if (url.startsWith("http")) url else "$mainUrl/${url.removePrefix("/")}"
-    private fun fixUrlNull(url: String?): String? = url?.let { if (it.isBlank()) null else fixUrl(it) }
+    private fun fixUrlNull(url: String?): String? = if (url.isNullOrBlank()) null else fixUrl(url)
 
     private suspend fun safeGet(url: String) = try {
         app.get(url, headers = mapOf("User-Agent" to "Mozilla/5.0", "Accept" to "text/html")).document
@@ -188,7 +186,6 @@ class SamehadakuProvider : MainAPI() {
             val json = JSONObject(res)
             val logos = json.optJSONArray("logos")
             if (logos != null && logos.length() > 0) {
-                // Ambil logo pertama (biasanya yang paling relevan)
                 "https://image.tmdb.org/t/p/w500${logos.getJSONObject(0).getString("file_path")}"
             } else null
         } catch (e: Exception) { null }
