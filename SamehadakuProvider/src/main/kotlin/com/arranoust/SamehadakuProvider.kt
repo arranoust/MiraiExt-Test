@@ -5,14 +5,9 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addAniListId
-import com.lagradost.cloudstream3.LoadResponse.Companion.addKitsuId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addMalId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.jsoup.nodes.Element
 
@@ -43,7 +38,6 @@ class SamehadakuProvider : MainAPI() {
         "anime-terbaru/page/%d" to "Episode Terbaru"
     )
 
-    // ================== Homepage ==================
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         context?.let { PopupHelper.showPopupIfNeeded(it) }
         val document = safeGet("$mainUrl/${request.data.format(page)}")
@@ -52,11 +46,7 @@ class SamehadakuProvider : MainAPI() {
         val homeList = items.mapNotNull { it.toLatestAnimeResult() }
 
         return newHomePageResponse(
-            list = HomePageList(
-                name = request.name,
-                list = homeList,
-                isHorizontalImages = true
-            ),
+            list = HomePageList(request.name, homeList, isHorizontalImages = true),
             hasNext = true
         )
     }
@@ -64,8 +54,7 @@ class SamehadakuProvider : MainAPI() {
     private fun Element.toLatestAnimeResult(): AnimeSearchResponse? {
         val a = this.selectFirst("div.thumb a") ?: this.selectFirst("a") ?: return null
         val title = this.selectFirst("h2.entry-title a")?.text()?.trim()?.removeBloat()
-            ?: a.attr("title")?.removeBloat()
-            ?: return null
+            ?: a.attr("title")?.removeBloat() ?: return null
         val href = fixUrlNull(a.attr("href")) ?: return null
         val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("src"))
         val epNum = this.selectFirst("div.dtla author")?.text()?.toIntOrNull()
@@ -76,140 +65,81 @@ class SamehadakuProvider : MainAPI() {
         }
     }
 
-    // ================== Search ==================
     override suspend fun search(query: String): List<SearchResponse> {
         val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
         val document = safeGet("$mainUrl/?s=$encodedQuery") ?: return emptyList()
-
-        return document.select("main#main article[itemtype='http://schema.org/CreativeWork']")
-            .mapNotNull { it.toSearchResult() }
-    }
-
-    private fun Element.toSearchResult(): AnimeSearchResponse? {
-        val a = this.selectFirst("div.animposx a") ?: return null
-        val title = a.selectFirst("h2")?.text()?.trim() ?: a.attr("title") ?: return null
-        val href = a.attr("href").takeIf { it.isNotEmpty() } ?: return null
-        val posterUrl = a.selectFirst("img")?.attr("src")?.let { fixUrl(it) }
-
-        return newAnimeSearchResponse(title, href, TvType.Anime) {
-            this.posterUrl = posterUrl
+        return document.select("main#main article[itemtype='http://schema.org/CreativeWork']").mapNotNull {
+            val a = it.selectFirst("div.animposx a") ?: return@mapNotNull null
+            val title = a.selectFirst("h2")?.text()?.trim() ?: a.attr("title") ?: return@mapNotNull null
+            newAnimeSearchResponse(title, fixUrl(a.attr("href")), TvType.Anime) {
+                this.posterUrl = fixUrlNull(it.selectFirst("img")?.attr("src"))
+            }
         }
     }
 
-    // ================== Load Anime ==================
+    // ================== Load Anime (Optimized with Metadata) ==================
     override suspend fun load(url: String): LoadResponse? {
         val finalUrl = if (url.contains("/anime/")) url
-        else safeGet("$mainUrl/$url")?.selectFirst("div.nvs.nvsc a")?.attr("href")?.let { fixUrl(it) }
-            ?: return null
+        else safeGet(url)?.selectFirst("div.nvs.nvsc a")?.attr("href")?.let { fixUrl(it) } ?: return null
 
         val document = safeGet(finalUrl) ?: return null
-
         val title = document.selectFirst("h1.entry-title")?.text()?.removeBloat() ?: return null
         val poster = document.selectFirst("div.thumb > img")?.attr("src")?.let { fixUrl(it) }
-        val tags = document.select("div.genre-info > a").map { it.text() }.ifEmpty { listOf("Unknown") }
         val year = document.selectFirst("div.spe > span:contains(Rilis)")?.ownText()?.let {
             Regex("\\d{4}").find(it)?.value?.toIntOrNull()
         }
-        val status = getStatus(document.selectFirst("div.spe > span:contains(Status)")?.ownText() ?: "")
-        val type =
-            getType(document.selectFirst("div.spe > span:contains(Type)")?.ownText()?.trim()?.lowercase() ?: "tv")
-        val description = document.select("div.desc p").text().trim()
-        val trailer = document.selectFirst("div.trailer-anime iframe")?.attr("src")?.let { fixUrl(it) }
+        val type = getType(document.selectFirst("div.spe > span:contains(Type)")?.ownText()?.trim()?.lowercase() ?: "tv")
 
+        // === Metadata Tracker & AniZip Mapping ===
         val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
         val malId = tracker?.malId
-
         var animeMetaData: MetaAnimeData? = null
-        var tmdbid: Int? = null
-        var kitsuid: String? = null
 
         if (malId != null) {
             try {
-                val syncMetaData = app.get("https://api.ani.zip/mappings?mal_id=$malId").text
-                animeMetaData = parseAnimeData(syncMetaData)
-                tmdbid = animeMetaData?.mappings?.themoviedbId
-                kitsuid = animeMetaData?.mappings?.kitsuId
-            } catch (e: Exception) {}
+                val syncData = app.get("https://api.ani.zip/mappings?mal_id=$malId").text
+                animeMetaData = ObjectMapper().readValue(syncData, MetaAnimeData::class.java)
+            } catch (e: Exception) { }
         }
 
-        val logoUrl = fetchTmdbLogoUrl(
-            tmdbAPI = "https://api.themoviedb.org/3",
-            apiKey = "98ae14df2b8d8f8f8136499daf79f0e0",
-            type = type,
-            tmdbId = tmdbid,
-            appLangCode = "en"
-        )
+        // === Logo & Background ===
+        val logoUrl = fetchTmdbLogo(animeMetaData?.mappings?.tmdbId, type)
+        val backgroundPoster = animeMetaData?.images?.find { it.coverType == "Fanart" }?.url ?: tracker?.cover
 
-        val backgroundposter = animeMetaData?.images?.find { it.coverType == "Fanart" }?.url ?: tracker?.cover
+        // === Episode Parsing with Thumbnails & Descriptions ===
+        val episodes = document.select("div.lstepsiode.listeps ul li").amap { li ->
+            val header = li.selectFirst("span.lchx > a") ?: return@amap null
+            val epName = header.text()
+            val epNumText = Regex("Episode\\s?(\\d+)").find(epName)?.groupValues?.getOrNull(1)
+            val metaEp = animeMetaData?.episodes?.get(epNumText)
 
-        val episodes = document.select("div.lstepsiode.listeps ul li").amap { element ->
-            val header = element.selectFirst("span.lchx > a") ?: return@amap null
-            val name = header.text()
-            var episodeNum = Regex("Episode\\s?(\\d+)").find(name)?.groupValues?.getOrNull(1)?.toIntOrNull()
-            
-            if (type == TvType.AnimeMovie && episodeNum == null) {
-                episodeNum = 1
-            }
-
-            val link = fixUrl(header.attr("href"))
-            val episodeKey = episodeNum?.toString()
-            val metaEp = if (episodeKey != null) animeMetaData?.episodes?.get(episodeKey) else null
-
-            val epOverview = metaEp?.overview
-            val finalOverview = if (!epOverview.isNullOrBlank()) {
-                epOverview
-            } else {
-                "Synopsis not yet available."
-            }
-
-            newEpisode(link) { 
-                this.name = if (type == TvType.AnimeMovie) {
-                    animeMetaData?.titles?.get("en") ?: animeMetaData?.titles?.get("ja") ?: title
-                } else {
-                    metaEp?.title?.get("en") ?: metaEp?.title?.get("ja") ?: name
-                }
-                this.episode = episodeNum 
-                this.score = Score.from10(metaEp?.rating)
-                this.posterUrl = metaEp?.image ?: animeMetaData?.images?.firstOrNull()?.url ?: ""
-                this.description = finalOverview
+            newEpisode(fixUrl(header.attr("href"))) {
+                this.episode = epNumText?.toIntOrNull()
+                this.name = metaEp?.title?.get("en") ?: epName
+                this.posterUrl = metaEp?.image ?: poster
+                this.description = metaEp?.overview ?: "Sinopsis episode belum tersedia."
                 this.addDate(metaEp?.airDateUtc)
-                this.runTime = metaEp?.runtime
             }
-        }.filterNotNull().reversed()
+        }.reversed()
 
-        val recommendations = document.select("aside#sidebar ul li, div.relat animepost").mapNotNull { it.toSearchResult() }
-
-        val apiDescription = animeMetaData?.description?.replace(Regex("<.*?>"), "")
-        val rawPlot = apiDescription ?: animeMetaData?.episodes?.get("1")?.overview
-        
-        val finalPlot = if (!rawPlot.isNullOrBlank()) {
-            rawPlot
-        } else {
-            description
-        }
-
-        return newAnimeLoadResponse(title, url, TvType.Anime) {
+        return newAnimeLoadResponse(title, url, type) {
             this.engName = animeMetaData?.titles?.get("en") ?: title
-            this.japName = animeMetaData?.titles?.get("ja") ?: animeMetaData?.titles?.get("x-jat")
+            this.japName = animeMetaData?.titles?.get("ja")
             this.posterUrl = tracker?.image ?: poster
-            this.backgroundPosterUrl = backgroundposter
-            try { this.logoUrl = logoUrl } catch(_:Throwable){}
+            this.backgroundPosterUrl = backgroundPoster
+            try { this.logoUrl = logoUrl } catch(e: Throwable) {}
             this.year = year
-            addEpisodes(DubStatus.Subbed, episodes)
-            this.showStatus = status
-            this.score = rating?.let { Score.from10(it) } ?: Score.from10(animeMetaData?.episodes?.get("1")?.rating)
-            this.plot = finalPlot
-            addTrailer(trailer)
-            this.tags = tags
-            this.recommendations = recommendations
+            this.plot = animeMetaData?.description?.replace(Regex("<.*?>"), "") ?: document.select("div.desc p").text().trim()
+            this.tags = document.select("div.genre-info > a").map { it.text() }
+            this.showStatus = getStatus(document.selectFirst("div.spe > span:contains(Status)")?.ownText() ?: "")
             
+            addEpisodes(DubStatus.Subbed, episodes)
             addMalId(malId)
             addAniListId(tracker?.aniId?.toIntOrNull())
-            try { addKitsuId(kitsuid) } catch(_:Throwable){}
+            addTrailer(document.selectFirst("div.trailer-anime iframe")?.attr("src")?.let { fixUrl(it) })
         }
     }
 
-    // ================== Load Links ==================
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -217,44 +147,22 @@ class SamehadakuProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = safeGet(data) ?: return false
-
         document.select("div#downloadb li").forEach { el ->
+            val quality = el.selectFirst("strong")?.text() ?: "Unknown"
             el.select("a").forEach {
-                loadFixedExtractor(
-                    fixUrl(it.attr("href")),
-                    el.selectFirst("strong")?.text() ?: "Unknown",
-                    "$mainUrl/",
-                    subtitleCallback,
-                    callback
-                )
+                loadExtractor(fixUrl(it.attr("href")), "$mainUrl/", subtitleCallback) { link ->
+                    callback.invoke(newExtractorLink(link.name, link.name, link.url, link.type) {
+                        this.referer = link.referer
+                        this.quality = quality.fixQuality()
+                        this.headers = link.headers
+                    })
+                }
             }
         }
         return true
     }
 
-    private suspend fun loadFixedExtractor(
-        url: String,
-        name: String,
-        referer: String? = null,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        // referer diset langsung di newExtractorLink
-        loadExtractor(url, referer, subtitleCallback) { link ->
-            CoroutineScope(Dispatchers.IO).launch {
-                callback.invoke(
-                    newExtractorLink(link.name, link.name, link.url, link.type) {
-                        this.referer = link.referer
-                        this.quality = name.fixQuality()
-                        this.headers = link.headers
-                        this.extractorData = link.extractorData
-                    }
-                )
-            }
-        }
-    }
-
-    // ================== Utils ==================
+    // ================== Utils & Helpers ==================
     private fun String.fixQuality(): Int = when (this.uppercase()) {
         "4K" -> Qualities.P2160.value
         "FULLHD" -> Qualities.P1080.value
@@ -262,56 +170,51 @@ class SamehadakuProvider : MainAPI() {
         else -> this.filter { it.isDigit() }.toIntOrNull() ?: Qualities.Unknown.value
     }
 
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    data class MetaImage(
-        @JsonProperty("coverType") val coverType: String?,
-        @JsonProperty("url") val url: String?
-    )
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    data class MetaEpisode(
-        @JsonProperty("episode") val episode: String?,
-        @JsonProperty("airDateUtc") val airDateUtc: String?,
-        @JsonProperty("runtime") val runtime: Int?,
-        @JsonProperty("image") val image: String?,
-        @JsonProperty("title") val title: Map<String, String>?,
-        @JsonProperty("overview") val overview: String?,
-        @JsonProperty("rating") val rating: String?,
-        @JsonProperty("finaleType") val finaleType: String?
-    )
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    data class MetaAnimeData(
-        @JsonProperty("titles") val titles: Map<String, String>?,
-        @JsonProperty("description") val description: String?,
-        @JsonProperty("images") val images: List<MetaImage>?,
-        @JsonProperty("episodes") val episodes: Map<String, MetaEpisode>?,
-        @JsonProperty("mappings") val mappings: MetaMappings? = null
-    )
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    data class MetaMappings(
-        @JsonProperty("themoviedb_id") val themoviedbId: Int? = null,
-        @JsonProperty("kitsu_id") val kitsuId: String? = null
-    )
-
     private fun String.removeBloat(): String =
-        this.replace(Regex("(Nonton)|(Anime)|(Subtitle\\sIndonesia)|(Sub\\sIndo)"), "").trim()
+        this.replace(Regex("(?i)(Nonton|Anime|Subtitle\\s?Indonesia|Sub\\s?Indo|Lengkap|Batch)"), "").trim()
 
-    private fun fixUrl(url: String): String = if (url.startsWith("http")) url else "$mainUrl/$url"
+    private fun fixUrl(url: String): String = if (url.startsWith("http")) url else "$mainUrl/${url.removePrefix("/")}"
     private fun fixUrlNull(url: String?): String? = url?.let { fixUrl(it) }
 
-    // ================== SafeGet with Headers ==================
     private suspend fun safeGet(url: String) = try {
-        // pake headers di parameter get, sesuai API NiceHTTP terbaru
-        app.get(
-            url,
-            headers = mapOf(
-                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36",
-                "Accept" to "text/html"
-            )
-        ).document
-    } catch (_: Exception) {
-        null
+        app.get(url, headers = mapOf("User-Agent" to "Mozilla/5.0", "Accept" to "text/html")).document
+    } catch (_: Exception) { null }
+
+    private suspend fun fetchTmdbLogo(tmdbId: Int?, type: TvType): String? {
+        if (tmdbId == null) return null
+        val apiType = if (type == TvType.AnimeMovie) "movie" else "tv"
+        return try {
+            val res = app.get("https://api.themoviedb.org/3/$apiType/$tmdbId/images?api_key=98ae14df2b8d8f8f8136499daf79f0e0").text
+            val logos = JSONObject(res).optJSONArray("logos")
+            if (logos != null && logos.length() > 0) {
+                "https://image.tmdb.org/t/p/w500${logos.getJSONObject(0).getString("file_path")}"
+            } else null
+        } catch (e: Exception) { null }
     }
 }
+
+// === Data Classes for AniZip Metadata ===
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class MetaImage(val coverType: String?, val url: String?)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class MetaEpisode(
+    val title: Map<String, String>?,
+    val overview: String?,
+    val image: String?,
+    val airDateUtc: String?
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class MetaAnimeData(
+    val titles: Map<String, String>?,
+    val description: String?,
+    val images: List<MetaImage>?,
+    val episodes: Map<String, MetaEpisode>?,
+    val mappings: MetaMappings?
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class MetaMappings(
+    @JsonProperty("themoviedb_id") val tmdbId: Int? = null
+)
