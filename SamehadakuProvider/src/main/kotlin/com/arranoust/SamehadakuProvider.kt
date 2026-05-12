@@ -138,22 +138,26 @@ class SamehadakuProvider : MainAPI() {
     ): Boolean {
         val document = safeGet(data) ?: return false
         
-        // GUNAKAN FOR-LOOP STANDAR UNTUK MENGHINDARI ERROR COROUTINE
-        val elements = document.select("div#downloadb li")
-        for (el in elements) {
-            val qualityText = el.selectFirst("strong")?.text() ?: "Unknown"
-            val quality = qualityText.fixQuality()
-            val anchors = el.select("a")
-            for (a in anchors) {
+        // MENGGUNAKAN CARA CODE ORANG: amap untuk loop async yang aman bagi suspend functions
+        document.select("div#downloadb li").amap { el ->
+            val quality = el.selectFirst("strong")?.text()?.fixQuality() ?: Qualities.Unknown.value
+            el.select("a").amap { a ->
                 val href = a.attr("href")
                 if (href.isNotBlank()) {
-                    // Panggil loadExtractor langsung di dalam loop suspend
+                    // loadExtractor dipanggil dalam lingkup amap yang merupakan coroutine scope
                     loadExtractor(fixUrl(href), "$mainUrl/", subtitleCallback) { link ->
-                        callback.invoke(newExtractorLink(link.name, link.name, link.url, link.type) {
-                            this.referer = link.referer
-                            this.quality = quality
-                            this.headers = link.headers
-                        })
+                        callback.invoke(
+                            ExtractorLink(
+                                link.source,
+                                link.name,
+                                link.url,
+                                link.referer,
+                                quality, // Menggunakan quality yang sudah kita parse
+                                link.type,
+                                link.headers,
+                                link.extractorData
+                            )
+                        )
                     }
                 }
             }
@@ -182,11 +186,12 @@ class SamehadakuProvider : MainAPI() {
         if (tmdbId == null) return null
         val apiType = if (type == TvType.AnimeMovie) "movie" else "tv"
         return try {
+            // Mengikuti pola fetch logo dari code orang dengan voting filter sederhana
             val res = app.get("https://api.themoviedb.org/3/$apiType/$tmdbId/images?api_key=98ae14df2b8d8f8f8136499daf79f0e0").text
-            val json = JSONObject(res)
-            val logos = json.optJSONArray("logos")
+            val logos = JSONObject(res).optJSONArray("logos")
             if (logos != null && logos.length() > 0) {
-                "https://image.tmdb.org/t/p/w500${logos.getJSONObject(0).getString("file_path")}"
+                val path = logos.getJSONObject(0).getString("file_path")
+                "https://image.tmdb.org/t/p/w500$path"
             } else null
         } catch (e: Exception) { null }
     }
