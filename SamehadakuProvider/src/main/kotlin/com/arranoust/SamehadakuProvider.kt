@@ -100,8 +100,8 @@ class SamehadakuProvider : MainAPI() {
         val logoUrl = fetchTmdbLogo(animeMetaData?.mappings?.tmdbId, type)
         val backgroundPoster = animeMetaData?.images?.find { it.coverType == "Fanart" }?.url ?: tracker?.cover
 
-        val episodes = document.select("div.lstepsiode.listeps ul li").amap { li ->
-            val header = li.selectFirst("span.lchx > a") ?: return@amap null
+        val episodes = document.select("div.lstepsiode.listeps ul li").mapNotNull { li ->
+            val header = li.selectFirst("span.lchx > a") ?: return@mapNotNull null
             val epName = header.text()
             val epNumText = Regex("Episode\\s?(\\d+)").find(epName)?.groupValues?.getOrNull(1)
             val metaEp = animeMetaData?.episodes?.get(epNumText)
@@ -113,7 +113,7 @@ class SamehadakuProvider : MainAPI() {
                 this.description = metaEp?.overview ?: "Sinopsis episode belum tersedia."
                 this.addDate(metaEp?.airDateUtc)
             }
-        }.filterNotNull().reversed()
+        }.reversed()
 
         return newAnimeLoadResponse(title, url, type) {
             this.engName = animeMetaData?.titles?.get("en") ?: title
@@ -138,28 +138,27 @@ class SamehadakuProvider : MainAPI() {
     ): Boolean {
         val document = safeGet(data) ?: return false
         
-        // MENGGUNAKAN CARA CODE ORANG (amap) UNTUK MENGHINDARI ERROR SUSPENSION
-        document.select("div#downloadb li").amap { el ->
-            val qualityText = el.selectFirst("strong")?.text() ?: ""
-            val quality = qualityText.fixQuality()
+        // MENGGUNAKAN CARA CODE ORANG (argamap)
+        document.select("div#downloadb li").argamap { el ->
+            val qText = el.selectFirst("strong")?.text() ?: ""
+            val quality = qText.fixQuality()
             
-            el.select("a").amap { a ->
+            el.select("a").argamap { a ->
                 val link = fixUrl(a.attr("href"))
                 if (link.isNotBlank()) {
-                    // Pakai newExtractorLink untuk menghindari deprecation error
+                    // Memanggil loadExtractor di dalam argamap (coroutine scope aman)
                     loadExtractor(link, "$mainUrl/", subtitleCallback) { extLink ->
-                        callback.invoke(
-                            newExtractorLink(
-                                extLink.name,
-                                extLink.name,
-                                extLink.url,
-                                extLink.referer,
-                                quality,
-                                extLink.type,
-                                extLink.headers,
-                                extLink.extractorData
+                        // PENGGUNAAN newExtractorLink YANG BENAR (blok initializer di belakang)
+                        val sourceName = extLink.name
+                        runBlocking {
+                            callback.invoke(
+                                newExtractorLink(sourceName, sourceName, extLink.url) {
+                                    this.quality = quality
+                                    this.referer = extLink.referer
+                                    this.headers = extLink.headers
+                                }
                             )
-                        )
+                        }
                     }
                 }
             }
@@ -192,7 +191,6 @@ class SamehadakuProvider : MainAPI() {
             val json = JSONObject(res)
             val logos = json.optJSONArray("logos")
             if (logos != null && logos.length() > 0) {
-                // Ambil logo pertama (sama seperti code orang)
                 val path = logos.getJSONObject(0).getString("file_path")
                 "https://image.tmdb.org/t/p/w500$path"
             } else null
