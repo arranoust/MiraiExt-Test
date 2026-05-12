@@ -39,7 +39,6 @@ class SamehadakuProvider : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        context?.let { PopupHelper.showPopupIfNeeded(it) }
         val document = safeGet("$mainUrl/${request.data.format(page)}")
             ?: return newHomePageResponse(listOf(), false)
         val items = document.select("li[itemtype='http://schema.org/CreativeWork']")
@@ -77,7 +76,6 @@ class SamehadakuProvider : MainAPI() {
         }
     }
 
-    // ================== Load Anime (Optimized with Metadata) ==================
     override suspend fun load(url: String): LoadResponse? {
         val finalUrl = if (url.contains("/anime/")) url
         else safeGet(url)?.selectFirst("div.nvs.nvsc a")?.attr("href")?.let { fixUrl(it) } ?: return null
@@ -90,7 +88,6 @@ class SamehadakuProvider : MainAPI() {
         }
         val type = getType(document.selectFirst("div.spe > span:contains(Type)")?.ownText()?.trim()?.lowercase() ?: "tv")
 
-        // === Metadata Tracker & AniZip Mapping ===
         val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
         val malId = tracker?.malId
         var animeMetaData: MetaAnimeData? = null
@@ -102,11 +99,10 @@ class SamehadakuProvider : MainAPI() {
             } catch (e: Exception) { }
         }
 
-        // === Logo & Background ===
         val logoUrl = fetchTmdbLogo(animeMetaData?.mappings?.tmdbId, type)
         val backgroundPoster = animeMetaData?.images?.find { it.coverType == "Fanart" }?.url ?: tracker?.cover
 
-        // === Episode Parsing with Thumbnails & Descriptions ===
+        // Perbaikan: Tambahkan .filterNotNull() di akhir amap
         val episodes = document.select("div.lstepsiode.listeps ul li").amap { li ->
             val header = li.selectFirst("span.lchx > a") ?: return@amap null
             val epName = header.text()
@@ -120,7 +116,7 @@ class SamehadakuProvider : MainAPI() {
                 this.description = metaEp?.overview ?: "Sinopsis episode belum tersedia."
                 this.addDate(metaEp?.airDateUtc)
             }
-        }.reversed()
+        }.filterNotNull().reversed()
 
         return newAnimeLoadResponse(title, url, type) {
             this.engName = animeMetaData?.titles?.get("en") ?: title
@@ -147,22 +143,26 @@ class SamehadakuProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = safeGet(data) ?: return false
-        document.select("div#downloadb li").forEach { el ->
+        
+        // Perbaikan: Gunakan loop for atau amap untuk menghindari error "Suspension functions"
+        document.select("div#downloadb li").amap { el ->
             val quality = el.selectFirst("strong")?.text() ?: "Unknown"
-            el.select("a").forEach {
-                loadExtractor(fixUrl(it.attr("href")), "$mainUrl/", subtitleCallback) { link ->
-                    callback.invoke(newExtractorLink(link.name, link.name, link.url, link.type) {
-                        this.referer = link.referer
-                        this.quality = quality.fixQuality()
-                        this.headers = link.headers
-                    })
+            el.select("a").amap { a ->
+                val href = a.attr("href")
+                if (href.isNotBlank()) {
+                    loadExtractor(fixUrl(href), "$mainUrl/", subtitleCallback) { link ->
+                        callback.invoke(newExtractorLink(link.name, link.name, link.url, link.type) {
+                            this.referer = link.referer
+                            this.quality = quality.fixQuality()
+                            this.headers = link.headers
+                        })
+                    }
                 }
             }
         }
         return true
     }
 
-    // ================== Utils & Helpers ==================
     private fun String.fixQuality(): Int = when (this.uppercase()) {
         "4K" -> Qualities.P2160.value
         "FULLHD" -> Qualities.P1080.value
@@ -174,7 +174,7 @@ class SamehadakuProvider : MainAPI() {
         this.replace(Regex("(?i)(Nonton|Anime|Subtitle\\s?Indonesia|Sub\\s?Indo|Lengkap|Batch)"), "").trim()
 
     private fun fixUrl(url: String): String = if (url.startsWith("http")) url else "$mainUrl/${url.removePrefix("/")}"
-    private fun fixUrlNull(url: String?): String? = url?.let { fixUrl(it) }
+    private fun fixUrlNull(url: String?): String? = url?.let { if (it.isBlank()) null else fixUrl(it) }
 
     private suspend fun safeGet(url: String) = try {
         app.get(url, headers = mapOf("User-Agent" to "Mozilla/5.0", "Accept" to "text/html")).document
@@ -185,15 +185,16 @@ class SamehadakuProvider : MainAPI() {
         val apiType = if (type == TvType.AnimeMovie) "movie" else "tv"
         return try {
             val res = app.get("https://api.themoviedb.org/3/$apiType/$tmdbId/images?api_key=98ae14df2b8d8f8f8136499daf79f0e0").text
-            val logos = JSONObject(res).optJSONArray("logos")
+            val json = JSONObject(res)
+            val logos = json.optJSONArray("logos")
             if (logos != null && logos.length() > 0) {
+                // Ambil logo pertama (biasanya yang paling relevan)
                 "https://image.tmdb.org/t/p/w500${logos.getJSONObject(0).getString("file_path")}"
             } else null
         } catch (e: Exception) { null }
     }
 }
 
-// === Data Classes for AniZip Metadata ===
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class MetaImage(val coverType: String?, val url: String?)
 
