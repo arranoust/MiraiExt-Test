@@ -5,9 +5,11 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addAniListId
+import com.lagradost.cloudstream3.LoadResponse.Companion.addKitsuId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addMalId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
+import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.jsoup.nodes.Element
 
@@ -25,7 +27,6 @@ class SamehadakuProvider : MainAPI() {
             t.contains("Movie", true) -> TvType.AnimeMovie
             else -> TvType.Anime
         }
-
         fun getStatus(t: String): ShowStatus = when (t) {
             "Completed" -> ShowStatus.Completed
             "Ongoing" -> ShowStatus.Ongoing
@@ -34,27 +35,48 @@ class SamehadakuProvider : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
-        "anime-terbaru/page/%d" to "Episode Terbaru"
+        "anime-terbaru/page/%d/" to "Episode Terbaru"
     )
 
+    // ================== Homepage ==================
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = safeGet("$mainUrl/${request.data.format(page)}")
-            ?: return newHomePageResponse(listOf(), false)
-        val items = document.select("li[itemtype='http://schema.org/CreativeWork']")
-        val homeList = items.mapNotNull { it.toLatestAnimeResult() }
+        val document = app.get("$mainUrl/${request.data.format(page)}").document
+        
+        val items = when (request.name) {
+            "Episode Terbaru" -> document.select("li[itemtype='http://schema.org/CreativeWork']")
+        }
 
+        val homeList = items.mapNotNull {
+            if (request.name == "Episode Terbaru") it.toLatestAnimeResult()
+            else it.toSearchResult()
+        }
+
+        val isLandscape = request.name == "Episode Terbaru"
+        
         return newHomePageResponse(
-            list = HomePageList(request.name, homeList, isHorizontalImages = true),
-            hasNext = true
+            listOf(HomePageList(request.name, homeList, isHorizontalImages = isLandscape)),
+            hasNext = homeList.isNotEmpty()
         )
     }
 
+    private fun Element.toSearchResult(): AnimeSearchResponse? {
+        val a = this.selectFirst("div.animepost a, div.animpost a") ?: return null
+        val title = a.selectFirst("div.title h2, div.tt h4")?.text()?.trim() ?: a.attr("title") ?: return null
+        val href = fixUrlNull(a.attr("href")) ?: return null
+        val posterUrl = fixUrlNull(this.selectFirst("div.content-thumb img, div.limit img")?.attr("src"))
+        val statusText = a.selectFirst("div.data > div.type, div.type")?.text()?.trim() ?: ""
+
+        return newAnimeSearchResponse(title, href, TvType.Anime) {
+            this.posterUrl = posterUrl
+            addSub(epNum)
+        }
+    }
+
     private fun Element.toLatestAnimeResult(): AnimeSearchResponse? {
-        val a = this.selectFirst("div.thumb a") ?: this.selectFirst("a") ?: return null
-        val title = this.selectFirst("h2.entry-title a")?.text()?.trim()?.removeBloat()
-            ?: a.attr("title")?.removeBloat() ?: return null
-        val href = fixUrl(a.attr("href"))
-        val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("src"))
+        val a = this.selectFirst("div.thumb a") ?: return null
+        val title = this.selectFirst("h2.entry-title a")?.text()?.trim() ?: a.attr("title") ?: return null
+        val href = fixUrlNull(a.attr("href")) ?: return null
+        val posterUrl = fixUrlNull(a.selectFirst("img")?.attr("src"))
         val epNum = this.selectFirst("div.dtla author")?.text()?.toIntOrNull()
 
         return newAnimeSearchResponse(title, href, TvType.Anime) {
@@ -63,109 +85,176 @@ class SamehadakuProvider : MainAPI() {
         }
     }
 
+    // ================== Search ==================
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = safeGet("$mainUrl/?s=$query") ?: return emptyList()
-        return document.select("main#main article[itemtype='http://schema.org/CreativeWork']").mapNotNull {
-            val a = it.selectFirst("div.animposx a") ?: return@mapNotNull null
-            val title = a.selectFirst("h2")?.text()?.trim() ?: a.attr("title") ?: return@mapNotNull null
-            newAnimeSearchResponse(title, fixUrl(a.attr("href")), TvType.Anime) {
-                this.posterUrl = fixUrlNull(it.selectFirst("img")?.attr("src"))
-            }
-        }
+        val document = app.get("$mainUrl/?s=$query").document
+        return document.select("div.animepost, article.animpost").mapNotNull { it.toSearchResult() }
     }
 
+    // ================== Load Anime ==================
     override suspend fun load(url: String): LoadResponse? {
-        val finalUrl = if (url.contains("/anime/")) url
-        else safeGet(url)?.selectFirst("div.nvs.nvsc a")?.attr("href")?.let { fixUrl(it) } ?: return null
-
-        val document = safeGet(finalUrl) ?: return null
-        val title = document.selectFirst("h1.entry-title")?.text()?.removeBloat() ?: return null
-        val poster = document.selectFirst("div.thumb > img")?.attr("src")?.let { fixUrl(it) }
-        val year = document.selectFirst("div.spe > span:contains(Rilis)")?.ownText()?.let {
-            Regex("\\d{4}").find(it)?.value?.toIntOrNull()
-        }
-        val type = getType(document.selectFirst("div.spe > span:contains(Type)")?.ownText()?.trim()?.lowercase() ?: "tv")
-
+        val fixUrl = if (url.contains("/anime/")) url
+        else app.get(url).document.selectFirst("div.nvs.nvsc a")?.attr("href") ?: url
+        
+        val document = app.get(fixUrl).document
+        
+        val rawTitle = document.selectFirst("h1.entry-title")?.text() ?: return null
+        val title = rawTitle.replace(Regex("(?i)(Nonton|Anime|Subtitle\\s+Indonesia|Sub\\s+Indo|Lengkap|Batch)"), "").trim()
+        
+        val poster = document.selectFirst("div.thumb > img")?.attr("src")
+        val tags = document.select("div.genre-info > a").map { it.text() }
+        
+        val year = Regex("\\d, (\\d*)").find(
+            document.select("div.spe > span:contains(Rilis)").text()
+        )?.groupValues?.getOrNull(1)?.toIntOrNull()
+        
+        val statusStr = document.selectFirst("div.spe > span:contains(Status)")?.ownText()?.replace(":", "")?.trim() ?: "Completed"
+        val status = getStatus(statusStr)
+        val typeStr = document.selectFirst("div.spe > span:contains(Type)")?.ownText()?.replace(":", "")?.trim()?.lowercase() ?: "tv"
+        val type = getType(typeStr)
+        
+        val rating = document.selectFirst("span.ratingValue, div.rating strong")?.text()?.replace("Rating", "")?.trim()?.toDoubleOrNull()       
+        val description = document.select("div.desc p, div.entry-content p").text().trim()
+        val trailer = document.selectFirst("div.trailer-anime iframe")?.attr("src")
+        
         val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
         val malId = tracker?.malId
+
         var animeMetaData: MetaAnimeData? = null
+        var tmdbid: Int? = null
+        var kitsuid: String? = null
 
         if (malId != null) {
             try {
-                val syncData = app.get("https://api.ani.zip/mappings?mal_id=$malId").text
-                animeMetaData = ObjectMapper().readValue(syncData, MetaAnimeData::class.java)
-            } catch (e: Exception) { }
+                val syncMetaData = app.get("https://api.ani.zip/mappings?mal_id=$malId").text
+                animeMetaData = parseAnimeData(syncMetaData)
+                tmdbid = animeMetaData?.mappings?.themoviedbId
+                kitsuid = animeMetaData?.mappings?.kitsuId
+            } catch (e: Exception) {}
         }
 
-        val logoUrl = fetchTmdbLogo(animeMetaData?.mappings?.tmdbId, type)
-        val backgroundPoster = animeMetaData?.images?.find { it.coverType == "Fanart" }?.url ?: tracker?.cover
+        val logoUrl = fetchTmdbLogoUrl(
+            tmdbAPI = "https://api.themoviedb.org/3",
+            apiKey = "98ae14df2b8d8f8f8136499daf79f0e0",
+            type = type,
+            tmdbId = tmdbid,
+            appLangCode = "en"
+        )
 
-        val episodes = document.select("div.lstepsiode.listeps ul li").mapNotNull { li ->
-            val header = li.selectFirst("span.lchx > a") ?: return@mapNotNull null
-            val epName = header.text()
-            val epNumText = Regex("Episode\\s?(\\d+)").find(epName)?.groupValues?.getOrNull(1)
-            val metaEp = animeMetaData?.episodes?.get(epNumText)
+        val backgroundposter = animeMetaData?.images?.find { it.coverType == "Fanart" }?.url ?: tracker?.cover
 
-            newEpisode(fixUrl(header.attr("href"))) {
-                this.episode = epNumText?.toIntOrNull()
-                this.name = metaEp?.title?.get("en") ?: epName
-                this.posterUrl = metaEp?.image ?: poster
-                this.description = metaEp?.overview ?: "Sinopsis episode belum tersedia."
-                this.addDate(metaEp?.airDateUtc)
-            }
-        }.reversed()
-
-        return newAnimeLoadResponse(title, url, type) {
-            this.engName = animeMetaData?.titles?.get("en") ?: title
-            this.posterUrl = tracker?.image ?: poster
-            this.backgroundPosterUrl = backgroundPoster
-            try { this.logoUrl = logoUrl } catch(e: Throwable) {}
-            this.year = year
-            this.plot = animeMetaData?.description?.replace(Regex("<.*?>"), "") ?: document.select("div.desc p").text().trim()
+        val episodes = document.select("div.lstepsiode.listeps ul li").amap { element ->
+            val header = element.selectFirst("span.lchx > a") ?: return@amap null
+            val name = header.text()
+            var episodeNum = Regex("Episode\\s?(\\d+)").find(name)?.groupValues?.getOrNull(1)?.toIntOrNull()
             
+            if (type == TvType.AnimeMovie && episodeNum == null) {
+                episodeNum = 1
+            }
+
+            val link = fixUrl(header.attr("href"))
+            val episodeKey = episodeNum?.toString()
+            val metaEp = if (episodeKey != null) animeMetaData?.episodes?.get(episodeKey) else null
+
+            val epOverview = metaEp?.overview
+            val finalOverview = if (!epOverview.isNullOrBlank()) {
+                epOverview
+            } else {
+                "Synopsis not yet available."
+            }
+
+            newEpisode(link) { 
+                this.name = if (type == TvType.AnimeMovie) {
+                    animeMetaData?.titles?.get("en") ?: animeMetaData?.titles?.get("ja") ?: title
+                } else {
+                    metaEp?.title?.get("en") ?: metaEp?.title?.get("ja") ?: name
+                }
+                this.episode = episodeNum 
+                this.score = Score.from10(metaEp?.rating)
+                this.posterUrl = metaEp?.image ?: animeMetaData?.images?.firstOrNull()?.url ?: ""
+                this.description = finalOverview
+                this.addDate(metaEp?.airDateUtc)
+                this.runTime = metaEp?.runtime
+            }
+        }.filterNotNull().reversed()
+
+        val recommendations = document.select("aside#sidebar ul li, div.relat animepost").mapNotNull { it.toSearchResult() }
+
+        val apiDescription = animeMetaData?.description?.replace(Regex("<.*?>"), "")
+        val rawPlot = apiDescription ?: animeMetaData?.episodes?.get("1")?.overview
+        
+        val finalPlot = if (!rawPlot.isNullOrBlank()) {
+            rawPlot
+        } else {
+            description
+        }
+
+        return newAnimeLoadResponse(title, url, TvType.Anime) {
+            this.engName = animeMetaData?.titles?.get("en") ?: title
+            this.japName = animeMetaData?.titles?.get("ja") ?: animeMetaData?.titles?.get("x-jat")
+            this.posterUrl = tracker?.image ?: poster
+            this.backgroundPosterUrl = backgroundposter
+            try { this.logoUrl = logoUrl } catch(_:Throwable){}
+            this.year = year
             addEpisodes(DubStatus.Subbed, episodes)
+            this.showStatus = status
+            this.score = rating?.let { Score.from10(it) } ?: Score.from10(animeMetaData?.episodes?.get("1")?.rating)
+            this.plot = finalPlot
+            addTrailer(trailer)
+            this.tags = tags
+            this.recommendations = recommendations
+            
             addMalId(malId)
             addAniListId(tracker?.aniId?.toIntOrNull())
-            addTrailer(document.selectFirst("div.trailer-anime iframe")?.attr("src")?.let { fixUrl(it) })
+            try { addKitsuId(kitsuid) } catch(_:Throwable){}
         }
     }
 
+    // ================== Load Links ==================
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = safeGet(data) ?: return false
-        
-        // MENGGUNAKAN CARA CODE ORANG (argamap)
-        document.select("div#downloadb li").argamap { el ->
-            val qText = el.selectFirst("strong")?.text() ?: ""
-            val quality = qText.fixQuality()
-            
-            el.select("a").argamap { a ->
-                val link = fixUrl(a.attr("href"))
-                if (link.isNotBlank()) {
-                    // Memanggil loadExtractor di dalam argamap (coroutine scope aman)
-                    loadExtractor(link, "$mainUrl/", subtitleCallback) { extLink ->
-                        // PENGGUNAAN newExtractorLink YANG BENAR (blok initializer di belakang)
-                        val sourceName = extLink.name
-                        runBlocking {
-                            callback.invoke(
-                                newExtractorLink(sourceName, sourceName, extLink.url) {
-                                    this.quality = quality
-                                    this.referer = extLink.referer
-                                    this.headers = extLink.headers
-                                }
-                            )
-                        }
-                    }
-                }
+        val document = app.get(data).document
+
+        document.select("div#downloadb li").amap { el ->
+            el.select("a").amap {
+                loadFixedExtractor(
+                    fixUrl(it.attr("href")),
+                    el.select("strong").text(),
+                    "$mainUrl/",
+                    subtitleCallback,
+                    callback
+                )
             }
         }
         return true
     }
 
+    private suspend fun loadFixedExtractor(
+        url: String,
+        name: String,
+        referer: String? = null,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        loadExtractor(url, referer, subtitleCallback) { link ->
+            runBlocking {
+                callback.invoke(
+                    newExtractorLink(link.name, link.name, link.url, link.type) {
+                        this.referer = link.referer
+                        this.quality = name.fixQuality()
+                        this.headers = link.headers
+                        this.extractorData = link.extractorData
+                    }
+                )
+            }
+        }
+    }
+
+    // ================== Utils ==================
     private fun String.fixQuality(): Int = when (this.uppercase()) {
         "4K" -> Qualities.P2160.value
         "FULLHD" -> Qualities.P1080.value
@@ -173,52 +262,114 @@ class SamehadakuProvider : MainAPI() {
         else -> this.filter { it.isDigit() }.toIntOrNull() ?: Qualities.Unknown.value
     }
 
-    private fun String.removeBloat(): String =
-        this.replace(Regex("(?i)(Nonton|Anime|Subtitle\\s?Indonesia|Sub\\s?Indo|Lengkap|Batch)"), "").trim()
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    data class MetaImage(
+        @JsonProperty("coverType") val coverType: String?,
+        @JsonProperty("url") val url: String?
+    )
 
-    private fun fixUrl(url: String): String = if (url.startsWith("http")) url else "$mainUrl/${url.removePrefix("/")}"
-    private fun fixUrlNull(url: String?): String? = if (url.isNullOrBlank()) null else fixUrl(url)
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    data class MetaEpisode(
+        @JsonProperty("episode") val episode: String?,
+        @JsonProperty("airDateUtc") val airDateUtc: String?,
+        @JsonProperty("runtime") val runtime: Int?,
+        @JsonProperty("image") val image: String?,
+        @JsonProperty("title") val title: Map<String, String>?,
+        @JsonProperty("overview") val overview: String?,
+        @JsonProperty("rating") val rating: String?,
+        @JsonProperty("finaleType") val finaleType: String?
+    )
 
-    private suspend fun safeGet(url: String) = try {
-        app.get(url, headers = mapOf("User-Agent" to "Mozilla/5.0", "Accept" to "text/html")).document
-    } catch (_: Exception) { null }
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    data class MetaAnimeData(
+        @JsonProperty("titles") val titles: Map<String, String>?,
+        @JsonProperty("description") val description: String?,
+        @JsonProperty("images") val images: List<MetaImage>?,
+        @JsonProperty("episodes") val episodes: Map<String, MetaEpisode>?,
+        @JsonProperty("mappings") val mappings: MetaMappings? = null
+    )
 
-    private suspend fun fetchTmdbLogo(tmdbId: Int?, type: TvType): String? {
-        if (tmdbId == null) return null
-        val apiType = if (type == TvType.AnimeMovie) "movie" else "tv"
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    data class MetaMappings(
+        @JsonProperty("themoviedb_id") val themoviedbId: Int? = null,
+        @JsonProperty("kitsu_id") val kitsuId: String? = null
+    )
+
+    private fun parseAnimeData(jsonString: String): MetaAnimeData? {
         return try {
-            val res = app.get("https://api.themoviedb.org/3/$apiType/$tmdbId/images?api_key=98ae14df2b8d8f8f8136499daf79f0e0").text
-            val json = JSONObject(res)
-            val logos = json.optJSONArray("logos")
-            if (logos != null && logos.length() > 0) {
-                val path = logos.getJSONObject(0).getString("file_path")
-                "https://image.tmdb.org/t/p/w500$path"
-            } else null
-        } catch (e: Exception) { null }
+            val objectMapper = ObjectMapper()
+            objectMapper.readValue(jsonString, MetaAnimeData::class.java)
+        } catch (_: Exception) {
+            null
+        }
     }
 }
 
-@JsonIgnoreProperties(ignoreUnknown = true)
-data class MetaImage(val coverType: String?, val url: String?)
+suspend fun fetchTmdbLogoUrl(
+    tmdbAPI: String,
+    apiKey: String,
+    type: TvType,
+    tmdbId: Int?,
+    appLangCode: String?
+): String? {
+    if (tmdbId == null) return null
 
-@JsonIgnoreProperties(ignoreUnknown = true)
-data class MetaEpisode(
-    val title: Map<String, String>?,
-    val overview: String?,
-    val image: String?,
-    val airDateUtc: String?
-)
+    val url = if (type == TvType.AnimeMovie)
+        "$tmdbAPI/movie/$tmdbId/images?api_key=$apiKey"
+    else
+        "$tmdbAPI/tv/$tmdbId/images?api_key=$apiKey"
 
-@JsonIgnoreProperties(ignoreUnknown = true)
-data class MetaAnimeData(
-    val titles: Map<String, String>?,
-    val description: String?,
-    val images: List<MetaImage>?,
-    val episodes: Map<String, MetaEpisode>?,
-    val mappings: MetaMappings?
-)
+    val json = runCatching { JSONObject(app.get(url).text) }.getOrNull() ?: return null
+    val logos = json.optJSONArray("logos") ?: return null
+    if (logos.length() == 0) return null
 
-@JsonIgnoreProperties(ignoreUnknown = true)
-data class MetaMappings(
-    @JsonProperty("themoviedb_id") val tmdbId: Int? = null
-)
+    val lang = appLangCode?.trim()?.lowercase()
+
+    fun path(o: JSONObject) = o.optString("file_path")
+    fun isSvg(o: JSONObject) = path(o).endsWith(".svg", true)
+    fun urlOf(o: JSONObject) = "https://image.tmdb.org/t/p/w500${path(o)}"
+
+    var svgFallback: JSONObject? = null
+
+    for (i in 0 until logos.length()) {
+        val logo = logos.optJSONObject(i) ?: continue
+        val p = path(logo)
+        if (p.isBlank()) continue
+
+        val l = logo.optString("iso_639_1").trim().lowercase()
+        if (l == lang) {
+            if (!isSvg(logo)) return urlOf(logo)
+            if (svgFallback == null) svgFallback = logo
+        }
+    }
+    svgFallback?.let { return urlOf(it) }
+
+    var best: JSONObject? = null
+    var bestSvg: JSONObject? = null
+
+    fun voted(o: JSONObject) = o.optDouble("vote_average", 0.0) > 0 && o.optInt("vote_count", 0) > 0
+    fun better(a: JSONObject?, b: JSONObject): Boolean {
+        if (a == null) return true
+        val aAvg = a.optDouble("vote_average", 0.0)
+        val aCnt = a.optInt("vote_count", 0)
+        val bAvg = b.optDouble("vote_average", 0.0)
+        val bCnt = b.optInt("vote_count", 0)
+        return bAvg > aAvg || (bAvg == aAvg && bCnt > aCnt)
+    }
+
+    for (i in 0 until logos.length()) {
+        val logo = logos.optJSONObject(i) ?: continue
+        if (!voted(logo)) continue
+
+        if (isSvg(logo)) {
+            if (better(bestSvg, logo)) bestSvg = logo
+        } else {
+            if (better(best, logo)) best = logo
+        }
+    }
+
+    best?.let { return urlOf(it) }
+    bestSvg?.let { return urlOf(it) }
+
+    return null
+}
