@@ -22,13 +22,6 @@ class SamehadakuProvider : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA)
 
-    override val app = Requests(
-    baseClient.newBuilder().build(), 
-    mapOf("User-Agent" to CommonConstants.USER_AGENT), 
-    defaultCacheTime = 6,
-    defaultCacheUnit = TimeUnit.HOURS
-    )
-
     companion object {
         fun getType(t: String): TvType = when {
             t.contains("OVA", true) || t.contains("Special", true) -> TvType.OVA
