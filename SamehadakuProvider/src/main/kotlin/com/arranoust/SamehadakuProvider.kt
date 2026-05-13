@@ -19,7 +19,11 @@ class SamehadakuProvider : MainAPI() {
     override val hasMainPage = true
     override var lang = "id"
     override val hasDownloadSupport = true
-    override val supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA)
+    override val supportedTypes = setOf(
+        TvType.Anime,
+        TvType.AnimeMovie,
+        TvType.OVA
+    )
 
     companion object {
         fun getType(t: String): TvType = when {
@@ -34,24 +38,30 @@ class SamehadakuProvider : MainAPI() {
         }
     }
 
+    // ================== Homepage ==================
     override val mainPage = mainPageOf(
-        "anime-terbaru/page/%d/" to "Episode Terbaru"
+        "anime-terbaru/page/%d/" to "New Episodes",
+        "daftar-anime-2/page/%d/?status=Currently+Airing&order=latest" to "Ongoing Anime",
+        "daftar-anime-2/page/%d/?status=Finished+Airing&order=latest" to "Complete Anime",
+        "daftar-anime-2/page/%d/?order=popular" to "Most Popular",
+        "daftar-anime-2/page/%d/?type=Movie&order=latest" to "Movies",
     )
 
-    // ================== Homepage ==================
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get("$mainUrl/${request.data.format(page)}").document
         
         val items = when (request.name) {
-            "Episode Terbaru" -> document.select("li[itemtype='http://schema.org/CreativeWork']")
+            "New Episodes" -> document.select("li[itemtype='http://schema.org/CreativeWork']")
+            "Ongoing Anime", "Complete Anime", "Most Popular", "Movies" -> document.select("div.animepost")
+            else -> document.select("article.animpost")
         }
 
         val homeList = items.mapNotNull {
-            if (request.name == "Episode Terbaru") it.toLatestAnimeResult()
+            if (request.name == "New Episodes") it.toLatestAnimeResult()
             else it.toSearchResult()
         }
 
-        val isLandscape = request.name == "Episode Terbaru"
+        val isLandscape = request.name == "New Episodes"
         
         return newHomePageResponse(
             listOf(HomePageList(request.name, homeList, isHorizontalImages = isLandscape)),
@@ -68,7 +78,7 @@ class SamehadakuProvider : MainAPI() {
 
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             this.posterUrl = posterUrl
-            addSub(epNum)
+            addDubStatus(statusText)
         }
     }
 
